@@ -1,140 +1,144 @@
 # Mizu Kakeibo MVP
 
-## Product goal
+## Product idea
 
-Mizu Kakeibo turns financial emails already collected in Gmail into a traceable personal transaction ledger. The MVP validates that an agent can reliably extract transactions from real email formats before a standalone application or automated ingestion service is built.
+Mizu Kakeibo watches the Gmail inbox for emails that may represent expenses. Every new inbox email is considered, so the user does not need to know which banks, merchants, or payment applications will send notifications in advance.
 
-The smallest useful product is a Gmail label, Gmail access through MCP, structured AI extraction, and a CSV ledger. Gmail remains the inbox and source of truth.
+The system decides whether an email represents an expense. Confirmed expenses are written to a personal ledger, uncertain messages are held for review, and other messages are marked as processed without creating a transaction. Gmail remains the source of truth.
 
-## User outcome
-
-With one command or agent request, the user can:
-
-- Find newly labeled financial emails.
-- Convert clear emails into structured transactions.
-- Avoid reprocessing emails already recorded in the ledger.
-- Identify uncertain or possibly duplicated transactions for review.
-- Trace every ledger entry back to its source Gmail message.
-
-## End-to-end workflow
+## Core workflow
 
 ```text
-Financial email arrives in Gmail
-  -> Gmail filter applies the Finance Tracker label
-  -> Agent searches the label
-  -> Gmail MCP returns the full email
-  -> AI extracts and classifies a transaction
-  -> Transaction is added to the ledger
-  -> Ambiguous results are marked for review
+New Gmail inbox message
+  -> Skip if the Gmail message ID was already processed,
+     unless re-evaluation was explicitly requested
+  -> Check for the optional Finance Tracker label
+      -> Labeled: go directly to full expense determination
+      -> Unlabeled: run lightweight relevance analysis
+          -> Clearly irrelevant: record not_expense
+          -> Possibly financial or uncertain: inspect the full email
+  -> Determine whether an expense occurred
+      -> Expense: extract and log the transaction
+      -> Not an expense: record the decision without a transaction
+      -> Uncertain: add the message to the review queue
 ```
 
-Gmail owns the original messages. The ledger stores extracted records and may be corrected without changing the source email.
+The lightweight analysis should use the minimum useful content, such as sender, subject, and snippet. Full message bodies and supported attachments are needed only for labeled, possibly financial, or uncertain messages.
 
-## MVP scope
+## Finance Tracker label
 
-### Gmail labeling
+The `Finance Tracker` label is optional. It improves routing but is not required for discovery.
 
-- Create a `Finance Tracker` label.
-- Configure Gmail filters for known banks, card providers, wallets, and merchants.
-- Allow the user to label exceptions manually.
+- Known banks, merchants, or payment applications may be labeled automatically with Gmail filters.
+- A labeled message skips lightweight relevance analysis but still goes through expense determination.
+- The label never proves that an expense occurred. A labeled newsletter, OTP, declined-payment alert, or statement notice may still be classified as not an expense.
+- The user may apply the label later to force full re-evaluation of a message.
+- An unknown sender can still be discovered because unlabeled inbox messages are analyzed.
 
-### Email retrieval
+## Message decisions
 
-- Search messages carrying the `Finance Tracker` label.
-- Read the full message body and supported attachments.
-- Use the Gmail message ID as the unique source identifier.
-- Skip any message ID already present in the ledger.
+Every processed Gmail message ends with one decision:
 
-### Transaction extraction
+- `expense` means an expense was identified and a transaction was logged.
+- `not_expense` means no transaction was logged.
+- `needs_review` means the system could not decide safely or could not extract the required transaction values.
 
-For each eligible email, extract one structured transaction with this contract:
+The exact rules for refunds, reversals, transfers, pending charges, bills, statements, and other edge cases will be decided from real examples during validation. The MVP must preserve these cases for review rather than silently inventing a permanent accounting rule.
+
+## Minimum record
+
+Every processed message records enough information to prevent reprocessing and explain the outcome:
 
 ```json
 {
   "source_email_id": "gmail-message-id",
-  "type": "expense",
-  "merchant": "Grab",
-  "amount_minor": 4250,
-  "currency": "MYR",
-  "transaction_date": "2026-10-06",
-  "category": "transport",
-  "payment_source": "Maybank Visa",
+  "source_email_ref": "gmail-message-reference",
+  "decision": "expense",
   "confidence": 0.97,
-  "needs_review": false
+  "needs_review": false,
+  "reason": "Completed card purchase",
+  "transaction": {
+    "merchant": "Grab",
+    "amount_minor": 4250,
+    "currency": "MYR",
+    "transaction_date": "2026-10-06"
+  }
 }
 ```
 
-`amount_minor` stores the value in the currency's minor unit so the ledger does not depend on floating-point arithmetic. `source_email_id` links the extracted record to Gmail and provides the primary deduplication key.
+`transaction` is present only when an expense is accepted. `amount_minor` stores the value in the currency's minor unit so the ledger does not depend on floating-point arithmetic.
+
+## MVP components
+
+### Gmail retrieval
+
+- Search new inbox messages, not only messages carrying a finance label.
+- Keep the Gmail message ID as the unique source identifier.
+- Skip processed IDs unless the user explicitly requests re-evaluation.
+- Retrieve full content only when the workflow requires expense determination.
+- Preserve a Gmail reference so the original message can be inspected during review.
+
+### LLM decisions
+
+- Analyze unlabeled message metadata for financial relevance.
+- Determine whether each labeled or relevant message represents an expense.
+- Extract the minimum transaction values only for confirmed expenses.
+- Return `needs_review` when the decision or required values are uncertain.
 
 ### Personal ledger
 
-- Store one row per transaction in CSV for the first validation run.
-- Preserve the Gmail message ID and a link or reference to the source email.
-- Treat the source email ID as unique so the same message cannot be recorded twice.
-- Allow ledger corrections without modifying the email.
-- Support CSV export if a later ledger format replaces CSV.
+- Start with a private CSV file for manual validation.
+- Store one row per confirmed expense.
+- Store processed message decisions separately or alongside the ledger so non-expenses are not analyzed repeatedly.
+- Allow corrections without changing the source email.
 
-### Review flow
+### Review
 
-- Automatically accept results when all required fields are present and the extraction is unambiguous.
-- Set `needs_review` when an amount is missing, a date is ambiguous, a currency is unknown, or the transaction may be a duplicate.
-- Present the source email alongside the proposed transaction during review.
-- Keep reviewed corrections in the ledger while preserving the original email reference.
+- Show the source email beside the proposed decision and transaction.
+- Allow the user to accept an expense, mark it as not an expense, or correct extracted values.
+- Preserve the Gmail message ID and the original decision after correction.
 
-### Basic reporting
+## External payment applications
 
-The ledger must support:
+No payment-application integration is required when the application sends receipts or transaction notifications into Gmail. Those messages enter the same inbox-wide workflow even when the sender is unknown and no filter exists.
 
-- Current-month spending.
-- Spending grouped by category.
-- Refunds.
-- Transactions awaiting review.
+Applications that send no email are outside the MVP and may require direct integrations later.
 
 ## Delivery stages
 
 ### Version 0 manual validation
 
-1. Label 20 to 50 existing financial emails.
-2. Ask the agent to retrieve and parse them.
-3. Save the structured results to CSV.
-4. Review extraction errors and refine the extraction instructions.
+Use Gmail MCP and an agent to process a sample of real inbox messages into a CSV ledger. Validate the two-stage decision flow and collect unresolved expense cases without building an application.
 
-This stage confirms whether the user's actual email formats can be processed accurately enough to continue.
+### Version 0.5 repeatable local workflow
 
-### Version 0.5 repeatable workflow
+Move the proven flow into a local tool that stores processed Gmail message IDs, decisions, review items, and confirmed expenses. The agent still retrieves Gmail messages through MCP and starts each run.
 
-1. Store processed Gmail message IDs.
-2. Fetch only new labeled messages.
-3. Add duplicate detection.
-4. Maintain a review queue.
-5. Run the workflow manually once a day or once a week.
+### Version 1 automatic personal service
 
-### Version 1 automated personal service
-
-Build an automated service only after the manual workflow is useful. That service may replace the interactive MCP step with Gmail API authentication, scheduled polling or Gmail push notifications, background processing, structured LLM calls, durable database storage, and a small private dashboard.
+Replace interactive retrieval with read-only Gmail API access and scheduled polling. Reuse the same decision, review, and ledger behavior rather than introducing a second workflow.
 
 ## Out of scope
 
-The MVP does not include:
+The MVP does not require:
 
+- Manual labeling of every financial sender.
+- A complete definition of every financial event type before validation.
+- Direct bank or payment-application connections.
 - A dedicated forwarding address or inbound email provider.
+- A dashboard or native mobile application.
 - Multi-user accounts or public onboarding.
-- A native mobile application.
-- Direct bank connections.
-- Complex budgeting features.
-- Subscription billing.
-- A custom-trained model.
-- A standalone web application or background service.
+- Complex budgeting, subscription billing, or a custom-trained model.
 
-## Acceptance criteria
+## Definition of done
 
-The MVP is complete when one command or agent request:
+The MVP is complete when one agent request:
 
-1. Finds new financial emails carrying the `Finance Tracker` label.
-2. Produces ledger-ready transactions for clear emails.
-3. Does not reprocess Gmail message IDs already in the ledger.
-4. Flags uncertain or possibly duplicated transactions for review.
-5. Updates the personal CSV ledger.
-6. Keeps every transaction traceable to its Gmail message.
+1. Finds new inbox messages whether or not they carry the `Finance Tracker` label.
+2. Does not reprocess Gmail message IDs already recorded.
+3. Uses the label only as a fast path to full expense determination.
+4. Records each message as `expense`, `not_expense`, or `needs_review`.
+5. Logs a traceable ledger row only for accepted expenses.
+6. Presents uncertain decisions and missing transaction values for review.
 
-The first validation run must use 20 to 50 real financial emails and record the extraction errors found. Those errors determine the extraction-instruction changes required before the repeatable workflow begins.
+The first validation run should include both labeled and unlabeled messages. Its unresolved cases will determine the later rules for what counts as an expense.
