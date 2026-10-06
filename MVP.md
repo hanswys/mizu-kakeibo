@@ -4,7 +4,7 @@
 
 Mizu Kakeibo watches the Gmail inbox for emails that may represent expenses. Every new inbox email is considered, so the user does not need to know which banks, merchants, or payment applications will send notifications in advance.
 
-The system decides whether an email represents an expense. Confirmed expenses are written to a personal ledger, uncertain messages are held for review, and other messages are marked as processed without creating a transaction. Gmail remains the source of truth.
+The system uses one full-message analyser to decide whether an email represents an expense. Confirmed expenses are written to a personal ledger, uncertain messages are held for review, and other messages are marked as processed without creating a transaction. Gmail remains the source of truth.
 
 ## Core workflow
 
@@ -12,78 +12,51 @@ The system decides whether an email represents an expense. Confirmed expenses ar
 New Gmail inbox message
   -> Skip if the Gmail message ID was already processed,
      unless re-evaluation was explicitly requested
-  -> Check for the optional Finance Tracker label
-      -> Labeled: go directly to full expense determination
-      -> Unlabeled: run lightweight relevance analysis
-          -> Clearly irrelevant: record not_expense
-          -> Possibly financial or uncertain: inspect the full email
+  -> Retrieve the full message
   -> Determine whether an expense occurred
       -> Expense: extract and log the transaction
       -> Not an expense: record the decision without a transaction
-      -> Uncertain: add the message to the review queue
+      -> Uncertain or incomplete: add the message to the review queue
 ```
 
-The lightweight analysis should use the minimum useful content, such as sender, subject, and snippet. Full message bodies and supported attachments are needed only for labeled, possibly financial, or uncertain messages.
-
-## Finance Tracker label
-
-The `Finance Tracker` label is optional. It improves routing but is not required for discovery.
-
-- Known banks, merchants, or payment applications may be labeled automatically with Gmail filters.
-- A labeled message skips lightweight relevance analysis but still goes through expense determination.
-- The label never proves that an expense occurred. A labeled newsletter, OTP, declined-payment alert, or statement notice may still be classified as not an expense.
-- The user may apply the label later to force full re-evaluation of a message.
-- An unknown sender can still be discovered because unlabeled inbox messages are analyzed.
+Every new message follows the same path. The initial design has no metadata gate, Gmail-label fast path, or separate relevance model.
 
 ## Message decisions
 
-Every processed Gmail message ends with one decision:
+Every successfully processed Gmail message ends with one decision:
 
 - `expense` means an expense was identified and a transaction was logged.
 - `not_expense` means no transaction was logged.
-- `needs_review` means the system could not decide safely or could not extract the required transaction values.
+- `needs_review` means the analyser could not decide safely or could not extract the required transaction values.
 
-The exact rules for refunds, reversals, transfers, pending charges, bills, statements, and other edge cases will be decided from real examples during validation. The MVP must preserve these cases for review rather than silently inventing a permanent accounting rule.
+Version 0 focuses on clear completed expenses. Refunds, reversals, transfers, pending charges, bills, statements, and other policy-dependent cases remain review items; defining their permanent accounting treatment is deferred.
 
 ## Minimum record
 
-Every processed message records enough information to prevent reprocessing and explain the outcome:
+Every successful analysis retains the source provider and Gmail message ID, which together are the canonical source reference. It also retains the decision and sanitized reason, any missing fields, and the analyser versions needed for reproducibility. A transaction is stored only for an accepted expense. Its amount uses the currency's integer minor unit so the ledger does not depend on floating-point arithmetic.
 
-```json
-{
-  "source_email_id": "gmail-message-id",
-  "source_email_ref": "gmail-message-reference",
-  "decision": "expense",
-  "confidence": 0.97,
-  "needs_review": false,
-  "reason": "Completed card purchase",
-  "transaction": {
-    "merchant": "Grab",
-    "amount_minor": 4250,
-    "currency": "MYR",
-    "transaction_date": "2026-10-06"
-  }
-}
-```
-
-`transaction` is present only when an expense is accepted. `amount_minor` stores the value in the currency's minor unit so the ledger does not depend on floating-point arithmetic.
+The authoritative field definitions and invariants live in the [inbox-to-expense contract](docs/inbox-expense-contract.md).
 
 ## MVP components
 
 ### Gmail retrieval
 
-- Search new inbox messages, not only messages carrying a finance label.
+- Search new inbox messages.
 - Keep the Gmail message ID as the unique source identifier.
 - Skip processed IDs unless the user explicitly requests re-evaluation.
-- Retrieve full content only when the workflow requires expense determination.
-- Preserve a Gmail reference so the original message can be inspected during review.
+- Retrieve the full content of every new message before analysis.
+- Normalize and analyse supported message-body text only; do not fetch or analyse attachments in Version 0.
+- Preserve the Gmail message ID so the original message can be opened during review.
+- Follow that contract for retrieval, normalization, analysis, validation, and persistence.
 
-### LLM decisions
+### Expense analyser
 
-- Analyze unlabeled message metadata for financial relevance.
-- Determine whether each labeled or relevant message represents an expense.
-- Extract the minimum transaction values only for confirmed expenses.
-- Return `needs_review` when the decision or required values are uncertain.
+- Receive one normalized full message at a time.
+- Return only `expense`, `not_expense`, or `needs_review`.
+- Extract merchant, integer minor-unit amount, currency, and transaction date only for a confirmed expense.
+- Return `needs_review` when the decision is uncertain, required values are missing, or necessary content cannot be interpreted safely.
+- Produce structured output that can be validated before anything is persisted.
+- Use the locally installed `qwen2.5:14b` model through Ollama with the versioned prompt and deterministic settings in the contract.
 
 ### Personal ledger
 
@@ -100,30 +73,32 @@ Every processed message records enough information to prevent reprocessing and e
 
 ## External payment applications
 
-No payment-application integration is required when the application sends receipts or transaction notifications into Gmail. Those messages enter the same inbox-wide workflow even when the sender is unknown and no filter exists.
+No payment-application integration is required when the application sends receipts or transaction notifications into Gmail. Those messages enter the inbox-wide workflow even when the sender is unknown and no Gmail filter exists.
 
 Applications that send no email are outside the MVP and may require direct integrations later.
 
 ## Delivery stages
 
-### Version 0 manual validation
+### Version 0 full-message evaluation
 
-Use Gmail MCP and an agent to process a sample of real inbox messages into a CSV ledger. Validate the two-stage decision flow and collect unresolved expense cases without building an application.
+Use Gmail MCP to build a fixed private set of real full messages with human ground truth. Evaluate the local Ollama `qwen2.5:14b` analyser for classification, extraction, uncertainty handling, latency, and consistency before building the ledger workflow.
 
 ### Version 0.5 repeatable local workflow
 
-Move the proven flow into a local tool that stores processed Gmail message IDs, decisions, review items, and confirmed expenses. The agent still retrieves Gmail messages through MCP and starts each run.
+Move the proven analyser into a local tool that stores processed Gmail message IDs, decisions, review items, and confirmed expenses. The agent still retrieves full Gmail messages through MCP and starts each run.
 
 ### Version 1 automatic personal service
 
-Replace interactive retrieval with read-only Gmail API access and scheduled polling. Reuse the same decision, review, and ledger behavior rather than introducing a second workflow.
+Replace interactive retrieval with read-only Gmail API access and scheduled polling. Reuse the same analyser, review, and ledger behavior rather than introducing a second workflow.
 
 ## Out of scope
 
 The MVP does not require:
 
-- Manual labeling of every financial sender.
+- A metadata-only relevance gate.
+- Gmail labels or filters for financial senders.
 - A complete definition of every financial event type before validation.
+- Attachment retrieval or analysis.
 - Direct bank or payment-application connections.
 - A dedicated forwarding address or inbound email provider.
 - A dashboard or native mobile application.
@@ -134,11 +109,11 @@ The MVP does not require:
 
 The MVP is complete when one agent request:
 
-1. Finds new inbox messages whether or not they carry the `Finance Tracker` label.
+1. Finds new inbox messages and retrieves each new message in full.
 2. Does not reprocess Gmail message IDs already recorded.
-3. Uses the label only as a fast path to full expense determination.
-4. Records each message as `expense`, `not_expense`, or `needs_review`.
+3. Sends every new message through the same expense analyser.
+4. Records each successful analysis as `expense`, `not_expense`, or `needs_review`.
 5. Logs a traceable ledger row only for accepted expenses.
 6. Presents uncertain decisions and missing transaction values for review.
 
-The first validation run should include both labeled and unlabeled messages. Its unresolved cases will determine the later rules for what counts as an expense.
+The first validation run should establish the full-message baseline. Metadata routing and Gmail labels may be evaluated later only if the baseline shows a meaningful cost, latency, or privacy problem.
