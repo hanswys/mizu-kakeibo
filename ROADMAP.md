@@ -98,7 +98,7 @@ Move the proven full-message analyser into a small local tool. The agent still r
 
 **Type:** AFK
 
-**Status:** `needs-triage`
+**Status:** `implemented` (milestone acceptance remains blocked by the V0-2 `proceed` gate)
 
 **Blocked by:** V0-2 with a `proceed` decision
 
@@ -108,16 +108,16 @@ Create one command that accepts a batch of normalized full Gmail messages from t
 
 ### Acceptance criteria
 
-- [ ] One command accepts full message envelopes and processes them end to end.
-- [ ] Known Gmail message IDs are skipped before any model call.
-- [ ] Every new message receives one full-message analysis.
-- [ ] Stored decisions are limited to `expense`, `not_expense`, and `needs_review`.
-- [ ] Only accepted expenses create transactions, with amounts stored in integer minor units.
-- [ ] Review items retain the model reason, missing fields, and Gmail message ID.
-- [ ] The user can accept, reject, or correct a review item without changing the source email.
-- [ ] An explicit re-evaluation can revisit a processed message without creating a duplicate transaction.
-- [ ] Tests cover all three decisions, invalid model output, replay, and correction.
-- [ ] Credentials, real email content, databases, and exports are excluded from version control.
+- [x] One command accepts full message envelopes and processes them end to end.
+- [x] Known Gmail message IDs are skipped before any model call.
+- [x] Every new message receives one full-message analysis.
+- [x] Stored decisions are limited to `expense`, `not_expense`, and `needs_review`.
+- [x] Only accepted expenses create transactions, with amounts stored in integer minor units.
+- [x] Review items retain the sanitized model reason, missing fields, and Gmail message ID.
+- [x] The user can accept, reject, or correct a review item without changing the source email.
+- [x] An explicit re-evaluation can revisit a processed message without creating a duplicate transaction.
+- [x] Tests cover all three decisions, invalid model output, replay, and correction.
+- [x] Credentials, real email content, databases, and exports are excluded from version control.
 
 ## Issue V0.5-2 Connect and approve the agent-driven sync
 
