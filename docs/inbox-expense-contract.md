@@ -1,6 +1,6 @@
 # Inbox-to-Expense Contract
 
-**Status:** Version 0 contract agreed; Gmail boundary verified; not yet implemented  
+**Status:** Version 0 contract agreed; Gmail boundary verified; not yet implemented
 **Contract version:** `v0-draft`
 
 This is the single boundary contract for Version 0. It covers Gmail retrieval, message normalization, one full-message expense analysis, validation, and the records produced from the result. The Gmail observations were verified through read-only MCP calls on 2026-10-06.
