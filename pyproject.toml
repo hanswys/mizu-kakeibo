@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mizu-kakeibo"
+version = "0.1.0"
+description = "Local inbox-to-expense processing for Mizu Kakeibo"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "httpx>=0.27,<1",
+  "iso4217>=1.12,<2",
+  "pydantic>=2.9,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "ruff>=0.7,<1",
+]
+
+[project.scripts]
+mizu-kakeibo = "mizu_kakeibo.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mizu_kakeibo"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/mizu_kakeibo/constants.py" = ["E501"]
