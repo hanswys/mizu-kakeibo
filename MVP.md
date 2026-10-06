@@ -1,5 +1,11 @@
 # Mizu Kakeibo MVP
 
+## Document authority
+
+This document is the source of truth for the MVP's product scope: the problem being solved, the user-visible workflow, the required capabilities, what is out of scope, and the definition of done.
+
+It does not track implementation status or prescribe detailed schemas and invariants. Use the [delivery roadmap](ROADMAP.md) for sequencing, dependencies, and completion gates, and the [inbox-to-expense contract](docs/inbox-expense-contract.md) for technical behavior.
+
 ## Product idea
 
 Mizu Kakeibo watches the Gmail inbox for emails that may represent expenses. Every new inbox email is considered, so the user does not need to know which banks, merchants, or payment applications will send notifications in advance.
@@ -56,7 +62,7 @@ The authoritative field definitions and invariants live in the [inbox-to-expense
 - Extract merchant, integer minor-unit amount, currency, and transaction date only for a confirmed expense.
 - Return `needs_review` when the decision is uncertain, required values are missing, or necessary content cannot be interpreted safely.
 - Produce structured output that can be validated before anything is persisted.
-- Use the locally installed `qwen2.5:14b` model through Ollama with the versioned prompt and deterministic settings in the contract.
+- Follow the versioned model, prompt, and runtime configuration in the inbox-to-expense contract.
 
 ### Personal ledger
 
@@ -77,20 +83,6 @@ No payment-application integration is required when the application sends receip
 
 Applications that send no email are outside the MVP and may require direct integrations later.
 
-## Delivery stages
-
-### Version 0 full-message evaluation
-
-Use Gmail MCP to build a fixed private set of real full messages with human ground truth. Evaluate the local Ollama `qwen2.5:14b` analyser for classification, extraction, uncertainty handling, latency, and consistency before building the ledger workflow.
-
-### Version 0.5 repeatable local workflow
-
-Move the proven analyser into a local tool that stores processed Gmail message IDs, decisions, review items, and confirmed expenses. The agent still retrieves full Gmail messages through MCP and starts each run.
-
-### Version 1 automatic personal service
-
-Replace interactive retrieval with read-only Gmail API access and scheduled polling. Reuse the same analyser, review, and ledger behavior rather than introducing a second workflow.
-
 ## Out of scope
 
 The MVP does not require:
@@ -101,9 +93,11 @@ The MVP does not require:
 - Attachment retrieval or analysis.
 - Direct bank or payment-application connections.
 - A dedicated forwarding address or inbound email provider.
-- A dashboard or native mobile application.
-- Multi-user accounts or public onboarding.
-- Complex budgeting, subscription billing, or a custom-trained model.
+- Categories, budgets, reporting, or visual dashboards.
+- Gmail push notifications instead of scheduled polling.
+- Hosted deployment or PostgreSQL storage.
+- Multi-user accounts, public onboarding, or native mobile applications.
+- Subscription billing or a custom-trained model.
 
 ## Definition of done
 

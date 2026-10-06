@@ -1,12 +1,12 @@
 # Mizu Kakeibo Delivery Roadmap
 
-## Guiding idea
+## Document authority
 
-Every new Gmail inbox email is retrieved in full and sent through one expense analyser. Every successfully processed message receives an explicit decision, and only a confirmed expense creates a ledger entry.
+This document is the source of truth for delivery sequencing: implementation issues, dependencies, milestone gates, and current status.
 
-The roadmap first proves classification and extraction on a fixed private dataset, then makes the same analyser repeatable and automatic. Metadata routing, Gmail labels, expense edge cases, reporting, dashboards, and broader financial features are deferred until evidence shows what is needed.
+It does not redefine product scope or technical behavior. Use the [MVP](MVP.md) for product requirements and exclusions, and the [inbox-to-expense contract](docs/inbox-expense-contract.md) for retrieval, normalization, analyser, validation, and persistence rules. A proposed roadmap item that changes either must update the authoritative document first.
 
-The proposed [inbox-to-expense contract](docs/inbox-expense-contract.md) is the single definition of the retrieval, normalization, analyser, validation, and persistence boundaries used below.
+The roadmap proves the analyser on a fixed private dataset, makes the workflow repeatable, and then automates it. Acceptance criteria below describe delivery evidence; where they summarize product behavior, the MVP and contract take precedence.
 
 ## Issue index
 
@@ -177,15 +177,6 @@ Add read-only Gmail authentication and scheduled polling for new inbox messages.
 
 Version 1 is complete when scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request.
 
-## Deferred decisions
+## Scope changes
 
-The following work should be driven by evidence from the full-message evaluation rather than decided in advance:
-
-- Whether a metadata-only gate can reduce full-message reads without hiding expenses.
-- Whether a `Finance Tracker` label improves routing or provides a useful re-evaluation signal.
-- Exact handling of refunds, reversals, transfers, pending charges, bills, and statements.
-- Attachment retrieval and analysis.
-- Categories, budgets, reporting, and visual dashboards.
-- Direct bank or payment-application integrations for transactions that produce no email.
-- Gmail push notifications instead of scheduled polling.
-- Hosted deployment, PostgreSQL, multi-user accounts, and mobile applications.
+Deferred and excluded product work is maintained in the MVP rather than duplicated here. Add it to this roadmap only after the MVP scope changes, then express it as an issue with a dependency and completion gate.
