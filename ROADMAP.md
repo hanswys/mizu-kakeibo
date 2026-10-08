@@ -28,7 +28,7 @@ Determine whether one normalized message-body analyser can reliably distinguish 
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `complete`
 
 **Blocked by:** None - can start immediately
 
@@ -38,15 +38,15 @@ Use Gmail MCP to collect a fixed private set of 20 to 50 representative inbox me
 
 ### Acceptance criteria
 
-- [ ] The private set contains between 20 and 50 real inbox messages.
-- [ ] The set includes ordinary non-financial mail, confirmed expenses, financial non-expenses, unknown senders, and ambiguous examples.
-- [ ] Every example retains its Gmail message ID privately as its source reference.
-- [ ] Every example has a human-labelled decision of `expense`, `not_expense`, or `needs_review`.
-- [ ] Every expected expense has human-labelled merchant, amount in minor units, currency, and transaction date.
-- [ ] Ground truth is recorded before model outputs are reviewed.
-- [ ] Unsupported content and missing required values are represented as review cases rather than guessed values.
-- [ ] Attachment bytes are not fetched, stored, or sent to the analyser.
-- [ ] No real email content, identifiers, credentials, or private evaluation data enters the repository.
+- [x] The private set contains between 20 and 50 real inbox messages.
+- [x] The set includes ordinary non-financial mail, confirmed expenses, financial non-expenses, unknown senders, and ambiguous examples.
+- [x] Every example retains its Gmail message ID privately as its source reference.
+- [x] Every example has a human-labelled decision of `expense`, `not_expense`, or `needs_review`.
+- [x] Every expected expense has human-labelled merchant, amount in minor units, currency, and transaction date.
+- [x] Ground truth is recorded before model outputs are reviewed.
+- [x] Unsupported content and missing required values are represented as review cases rather than guessed values.
+- [x] Attachment bytes are not fetched, stored, or sent to the analyser.
+- [x] No real email content, identifiers, credentials, or private evaluation data enters the repository.
 
 ## Issue V0-2 Evaluate the expense analyser
 
