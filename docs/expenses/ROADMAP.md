@@ -52,7 +52,7 @@ Use Gmail MCP to collect a fixed private set of 20 to 50 representative inbox me
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `in-progress` (the `evaluate` command is implemented; the real run awaits the private dataset labelled against `expense-v0.4`)
 
 **Blocked by:** V0-1
 
