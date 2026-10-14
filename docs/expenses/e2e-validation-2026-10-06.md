@@ -36,5 +36,5 @@ response. A later retry returned valid output and was stored normally.
 
 This was an ad hoc real-inbox validation with human review after the model run.
 It is useful integration evidence, but it is not the fixed, pre-labelled private
-evaluation required by V0-2 in the [delivery roadmap](../ROADMAP.md). No email
+evaluation required by V0-2 in the [delivery roadmap](ROADMAP.md). No email
 content, Gmail identifiers, or other private source data is recorded here.
