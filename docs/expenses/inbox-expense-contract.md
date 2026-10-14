@@ -131,7 +131,7 @@ Normalization rules:
 7. Limit sender to 512 Unicode characters, subject to 1,000, and normalized body to 24,000. For an oversized body, retain the first 18,000 and final 6,000 characters with an explicit omission marker between them.
 8. Set `content.truncated` to true if any model-facing field was shortened. Truncation alone does not force review when the retained evidence is complete, but the analyser must return `needs_review` if omitted content could change the decision.
 
-These character limits are deterministic and model-provider independent. A later model may use a smaller token budget internally, but it must not silently apply a second content limit.
+These character limits are deterministic and model-provider independent. A later model may use a smaller token budget internally, but it must not silently apply a second content limit. [Section 4](#4-model-runtime-and-prompt) defines how the analyser detects a prompt that exceeds its token budget.
 
 `content.source_type` is `text_plain` when all selected text came from plain-text parts, `html_converted` when HTML conversion was required, or `mixed_text` when multiple non-alternative text parts were combined.
 
@@ -195,11 +195,20 @@ Version 0 uses the strongest currently installed local Ollama model:
 | Model digest | `sha256-2049f5674b1e92b4464e5729975c9689fcfbf0b0e4443ccf10b5339f370f9a54` |
 | Temperature | `0` |
 | Seed | `42` |
-| Context | `32768` |
+| Context | `12288` |
 | Maximum generated tokens | `512` |
+| Request timeout | `300` seconds |
 | Streaming | Disabled |
 | Tools | None |
 | Prompt version | `expense-v0.3` |
+
+The context is set below the model's 32,768-token maximum so that model weights and KV cache fit in the GPU memory of a 16 GB Apple M2 (11.8 GiB usable). Measured on 2026-10-14 with Ollama `0.23.1`, a `32768` context needed about 17 GB, ran 34% on CPU, and exceeded the request timeout on every call. A `12288` context needed about 12 GB and ran 95% on GPU at about 18 generated tokens per second.
+
+At the 24,000-character body limit, the full prompt measured about 4,000 tokens for English prose and 6,800 for Malay prose, but about 13,500 for URL-dense text, which exceeds the budget. CJK text was not measured; at typical tokenizer rates a CJK body near the character limit would also exceed it.
+
+Ollama `0.23.1` does not reject an over-long prompt. It keeps the first four tokens and the end of the input, discarding everything between them, including the system prompt. It still returns success and reports `prompt_eval_count` equal to the context. The analyser must therefore read `prompt_eval_count` from every chat response. If the count is absent, or if it plus the maximum generated tokens exceeds the context, the result is an operational failure: no decision is recorded and the output is discarded even if it is valid. Retrying does not resolve an over-budget message; it stays visible as failed until the context or normalization limits change.
+
+The request timeout covers prompt processing plus generation. On the measured M2, prompt processing ran at roughly 55 to 60 tokens per second, so a prompt that fills the context needs about four minutes.
 
 Use Ollama's chat API with its `format` field set to the complete JSON Schema for the analyser output. Validate the returned JSON again in application code; structured generation does not replace contract validation. Do not silently fall back to `qwen2.5:7b` or another model, because changing models would invalidate comparison with earlier evaluation runs.
 

@@ -16,6 +16,7 @@ from .constants import (
     OLLAMA_BASE_URL,
     OLLAMA_VERSION,
     PROMPT_VERSION,
+    REQUEST_TIMEOUT_SECONDS,
     SEED,
     SYSTEM_PROMPT,
     TEMPERATURE,
@@ -46,7 +47,7 @@ class OllamaAnalyser:
         base_url: str = OLLAMA_BASE_URL,
         *,
         client: httpx.Client | None = None,
-        timeout: float = 120.0,
+        timeout: float = REQUEST_TIMEOUT_SECONDS,
     ) -> None:
         self._owns_client = client is None
         self._client = client or httpx.Client(base_url=base_url, timeout=timeout)
@@ -146,13 +147,21 @@ class OllamaAnalyser:
         try:
             response = self._client.post("/api/chat", json=request)
             response.raise_for_status()
-            content = response.json()["message"]["content"]
+            body = response.json()
+            prompt_tokens = body.get("prompt_eval_count")
+            if (
+                not isinstance(prompt_tokens, int)
+                or prompt_tokens + MAX_GENERATED_TOKENS > CONTEXT_SIZE
+            ):
+                raise AnalysisError("prompt exceeded the analyser context budget")
+            content = body["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("message.content is not a string")
             return ExpenseAnalysisOutput.model_validate_json(content)
         except (
             httpx.HTTPError,
             json.JSONDecodeError,
+            AttributeError,
             KeyError,
             TypeError,
             ValidationError,
