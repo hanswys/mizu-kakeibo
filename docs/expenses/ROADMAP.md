@@ -4,7 +4,7 @@
 
 This document is the source of truth for delivery sequencing: implementation issues, dependencies, milestone gates, and current status.
 
-It does not redefine product scope or technical behavior. Use the [MVP](MVP.md) for product requirements and exclusions, and the [inbox-to-expense contract](docs/inbox-expense-contract.md) for retrieval, normalization, analyser, validation, and persistence rules. A proposed roadmap item that changes either must update the authoritative document first.
+It does not redefine product scope or technical behavior. Use the [MVP](MVP.md) for product requirements and exclusions, and the [inbox-to-expense contract](inbox-expense-contract.md) for retrieval, normalization, analyser, validation, and persistence rules. A proposed roadmap item that changes either must update the authoritative document first.
 
 The roadmap proves the analyser on a fixed private dataset, makes the workflow repeatable, and then automates it. Acceptance criteria below describe delivery evidence; where they summarize product behavior, the MVP and contract take precedence.
 
