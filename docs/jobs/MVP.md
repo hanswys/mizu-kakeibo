@@ -4,26 +4,28 @@
 
 This document is the source of truth for the job tracker's product scope: the problem being solved, the user-visible workflow, the required capabilities, what is out of scope, and the definition of done.
 
-It does not track implementation status or prescribe detailed schemas and invariants. Use the [delivery roadmap](ROADMAP.md) for sequencing, dependencies, and completion gates. A technical contract will be added under `docs/jobs/` once real email layouts have been sampled; the roadmap tracks that work.
+It does not track implementation status or prescribe detailed schemas and invariants. Use the [delivery roadmap](ROADMAP.md) for sequencing, dependencies, and completion gates. The technical contract, [`job-tracker-contract.md`](job-tracker-contract.md), owns schemas, matching and normalization rules, and the sampled email layouts.
 
 ## Product idea
 
-The job tracker follows the status of the user's job applications using the notification emails that LinkedIn and Jobstreet send to Gmail. Those emails report events such as an application being submitted, viewed, rejected, or advanced to an interview.
+The job tracker follows the status of the user's job applications using the emails they cause in Gmail: notifications from LinkedIn and Jobstreet, and messages from employers, their hiring systems, and recruiters. Those emails report events such as an application being submitted, viewed, rejected, or advanced to an interview.
 
-Unlike the [expense MVP](../expenses/MVP.md), which considers every inbox message because expense senders are not known in advance, the job tracker only considers messages from known LinkedIn and Jobstreet senders. A sender filter is appropriate here.
+Sampling showed that LinkedIn and Jobstreet send only submitted, viewed, and rejected notices. Interview invitations and most outcomes come from employers' own addresses and hiring systems, so a filter on known senders would miss them. Like the [expense MVP](../expenses/MVP.md), the job tracker therefore considers every inbox message and lets the analyser decide which ones concern a job application.
 
 ## Core workflow
 
 Applications are stateful entities. One application is updated by several emails over time, whereas each expense is an independent event. Matching a new email to the right application is the core problem.
 
 ```text
-New Gmail message from a known LinkedIn or Jobstreet sender
+New Gmail inbox message
   -> Skip if the Gmail message ID was already processed by the job tracker
   -> Retrieve the full message
   -> LLM analysis returns a structured result
   -> Validate the result
-      -> Status update: match on company + job title, then update
-         that application or create a new one
+      -> Status update: match on company + job title
+          -> exact match: update that application
+          -> likely match: add the message to the review queue with the suggested application
+          -> no match: create a new application
       -> Not an application: record the decision without changing applications
       -> Uncertain or incomplete: add the message to the review queue
 ```
@@ -35,12 +37,14 @@ The LLM only reads the email and fills in a fixed structured result. Matching, s
 Every successfully processed Gmail message ends with one decision:
 
 - `status_update` means the email reports a status for an identified application.
-- `not_application` means the email is from a known sender but reports no application status, such as a job alert, job recommendation, or newsletter.
+- `not_application` means the email reports no application status, such as a job alert, job recommendation, saved-job reminder, recruiter outreach, newsletter, or any message unrelated to jobs.
 - `needs_review` means the analyser could not decide safely or could not extract the required values.
 
 An email must return `needs_review` when the company or the job title is missing, or when the reported status does not clearly map to one of the application statuses below.
 
 `needs_review` flags the email, not the application. While an email waits for review, the application it may concern keeps its last confirmed status.
+
+Emails that mention an application but report no status change are `not_application`. This includes notices that a job listing has closed while the employer keeps the application, and digests that summarize several applications in one email.
 
 ## Application statuses
 
@@ -52,36 +56,56 @@ An application has exactly one current status:
 - `rejected` means the employer declined the application.
 - `offered` means the employer made an offer.
 
-Rules for which status changes are allowed, and how out-of-order, duplicate, or contradictory emails are applied, are still open (see [open questions](#open-questions)).
+### Status changes
+
+Status updates are applied to an application in email received order, and statuses only move forward:
+
+```text
+applied -> viewed -> interview -> offered | rejected
+```
+
+`offered` and `rejected` are final outcomes. Either may follow any earlier status, so a status may be skipped.
+
+- An update to a later status replaces the current status.
+- An update to the same status, or to an earlier status, is linked to the application without changing its status. This covers duplicate emails and emails that arrive out of order.
+- An `applied` update for an application whose status is `rejected` reopens it as `applied`, because the user applied to the same role again. The earlier emails stay linked.
+- An `offered` update for a `rejected` application, or a `rejected` update for an `offered` application, is contradictory. The email goes to review and the application keeps its status.
 
 ## Application identity
 
 An application is identified by its company and job title together. Two roles at the same company are two applications. At most one application exists for each company and job title pair.
 
-- A status update whose company and job title match an existing application updates that application.
-- A status update with no matching application creates one, whatever status it reports. An application first seen as `rejected` is still recorded.
+The analyser extracts a clean company name and job title even when an email combines them with other text, such as a location. Matching is then done by application code:
+
+- Company names and job titles are compared after deterministic normalization, such as case, whitespace, punctuation, and legal-form variants like `Sdn Bhd` and `Sdn. Bhd.`. The contract defines the exact rules.
+- A status update whose normalized company and job title match an existing application, directly or through a confirmed alias, updates that application.
+- A status update with no exact match but a likely match, such as the same company with a job title that contains or is contained in an existing one, goes to review with the likely application suggested.
+- A status update with no exact or likely match creates an application, whatever status it reports. An application first seen as `rejected` is still recorded.
 - An email missing either the company or the job title is never matched or used to create an application. It goes to review.
 
-How company names and job titles are normalized before comparison is defined in the future contract, based on the sampled emails.
+When the user confirms during review that a differently written company name or job title belongs to an existing application, the tracker keeps that name as an alias, so later emails with the same name match automatically.
+
+Applications made through any channel are tracked, including LinkedIn, Jobstreet, other job boards, company career sites, and recruiters, as long as they produce an email.
 
 ## Minimum record
 
-Each application retains its company, job title, current status, and a traceable link to every Gmail message that updated it. Each processed message retains its source provider and Gmail message ID, the decision and sanitized reason, any missing fields, and the analyser versions needed for reproducibility.
+Each application retains its company, job title, current status, any confirmed aliases, and a traceable link to every Gmail message that updated it. Each processed message retains its source provider and Gmail message ID, the decision and sanitized reason, any missing fields, any suggested application, and the analyser versions needed for reproducibility.
 
-Field definitions belong in the future contract.
+Field definitions belong in the contract.
 
 ## First run
 
-The first run processes LinkedIn and Jobstreet emails received on or after 2026-04-14, six months before this scope was set. Older emails are ignored. Later runs process only messages not yet recorded as processed.
+The first run processes inbox messages received on or after 2026-04-14, six months before this scope was set. Older emails are ignored. Later runs process only messages not yet recorded as processed.
 
 ## MVP components
 
 ### Gmail retrieval
 
-- Search for messages from known LinkedIn and Jobstreet senders only. The exact sender addresses are recorded in the contract after sampling.
+- Search all inbox messages, without a sender filter.
 - Keep the Gmail message ID as the unique source identifier.
 - Skip processed IDs unless the user explicitly requests re-evaluation.
-- Retrieve and normalize the full message using the same Gmail adapter and `inbox-message/v0` envelope as the [expense contract](../expenses/inbox-expense-contract.md), unchanged.
+- Retrieve and normalize the full message using the same Gmail adapter and `inbox-message/v0` envelope as the [expense contract](../expenses/inbox-expense-contract.md).
+- Prefer the HTML alternative over the plain-text alternative when normalizing. Some LinkedIn notifications carry the job title and status only in their HTML part. The shared adapter offers this as an option that the expense app does not use, so expense behavior is unchanged.
 - Keep its own processed-message tracking and its own private database, separate from the expense app. The two apps do not share processing state.
 
 ### Status analyser
@@ -89,20 +113,24 @@ The first run processes LinkedIn and Jobstreet emails received on or after 2026-
 - Receive one normalized full message at a time.
 - Return only `status_update`, `not_application`, or `needs_review`.
 - Extract company, job title, and status only for a `status_update`.
+- Ignore other jobs listed in the same email, such as recommendations, when extracting company and job title.
 - Return `needs_review` when the company or job title is missing, the status is unclear, or the content cannot be interpreted safely.
 - Produce structured output that can be validated before anything is persisted.
 
 ### Application matching
 
-- Match each validated status update to an application by company and job title.
+- Match each validated status update to an application by normalized company and job title, including confirmed aliases.
+- Send likely but inexact matches to review with the suggested application.
 - Create the application when no match exists.
+- Apply the status change rules above.
 - Link every processed status-update email to its application.
 
 ### Review
 
-- Show the source email beside the proposed decision and extracted values.
-- Allow the user to accept the proposal, correct company, job title, or status, or mark the email as not an application.
-- Apply a resolved status update through the same matching rules.
+- Show the source email beside the proposed decision, extracted values, and any suggested application.
+- Allow the user to accept the proposal, correct company, job title, or status, attach the email to the suggested or another application, or mark the email as not an application.
+- Save a confirmed name variant as an alias of the application.
+- Apply a resolved status update through the same matching and status change rules.
 - Preserve the Gmail message ID and the original decision after correction.
 
 ### Application list
@@ -111,27 +139,20 @@ The first run processes LinkedIn and Jobstreet emails received on or after 2026-
 
 ### Testing
 
-Parsing and matching are tested before the tool is built. A private evaluation set of real LinkedIn and Jobstreet emails, with human ground truth, must cover both senders, every status, non-application emails, emails missing a company or job title, and several emails that update the same application. The [roadmap](ROADMAP.md) owns the evaluation gates.
+Parsing and matching are tested before the tool is built. A private evaluation set of real inbox emails, with human ground truth, must cover LinkedIn, Jobstreet, and employer or hiring-system senders; every status; non-application emails, including job alerts and unrelated mail; emails missing a company or job title; several emails that update the same application; names written differently across emails for the same application; and a re-application after a rejection. No real offer email exists in the sampling window, so `offered` is covered by a few synthetic emails, clearly marked as synthetic. The [roadmap](ROADMAP.md) owns the evaluation gates.
 
 ## Privacy
 
-The same rules as the expense project apply: no real email content, identifiers, or personal data may be committed to the repository. Samples of LinkedIn and Jobstreet email structure must record field names, types, and layout only.
-
-## Open questions
-
-These must be decided before the contract is written:
-
-- Which status changes are allowed, and how are out-of-order, duplicate, or contradictory emails applied? The current direction is to order updates by email received time and rely on the one-application-per-company-and-title rule, but this has not been settled.
-- How are near-duplicate company names or job titles handled, for example a legal company name in one email and a brand name in another? The sampled emails will show how consistent the names are.
+The same rules as the expense project apply: no real email content, identifiers, or personal data may be committed to the repository. Samples of email structure must record field names, types, and layout only.
 
 ## Out of scope
 
 The MVP does not require:
 
-- Job boards or senders other than LinkedIn and Jobstreet.
-- Applications that never produce a LinkedIn or Jobstreet email, or manual entry of applications.
+- Applications that never produce an email, or manual entry of applications.
 - Emails received before 2026-04-14.
-- Attachment retrieval or analysis.
+- Attachment retrieval or analysis, including offer letters sent as attachments.
+- Fuzzy matching that updates an application without review.
 - Calendar events, reminders, or follow-up prompts.
 - Reporting, analytics, or visual dashboards beyond the application list.
 - Replying to or acting on emails.
@@ -143,12 +164,12 @@ The MVP does not require:
 
 The MVP is complete when one agent request:
 
-1. Finds LinkedIn and Jobstreet messages not yet processed by the job tracker, limited on the first run to messages received on or after 2026-04-14.
+1. Finds inbox messages not yet processed by the job tracker, limited on the first run to messages received on or after 2026-04-14.
 2. Does not reprocess Gmail message IDs already recorded.
 3. Sends every new message through the same status analyser.
 4. Records each successful analysis as `status_update`, `not_application`, or `needs_review`.
-5. Creates or updates exactly one application per company and job title, linked to every source message.
-6. Presents review items beside their source emails and applies resolved items to the application list.
+5. Creates or updates exactly one application per company and job title, applies the status change rules, and links every source message.
+6. Presents review items, including suggested matches, beside their source emails and applies resolved items to the application list.
 7. Shows the application list with each application's current status.
 
 The analyser and matching must first pass the private evaluation described under [Testing](#testing).

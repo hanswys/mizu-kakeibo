@@ -7,7 +7,7 @@ This repository holds several inbox-driven personal apps that are planned to con
 | Project | Directory | Status |
 | --- | --- | --- |
 | Mizu Kakeibo (Gmail to expense ledger) | `docs/expenses/` | Active |
-| Job-application tracker (LinkedIn and Jobstreet emails) | `docs/jobs/` | Planning |
+| Job-application tracker (job-application emails, including LinkedIn and Jobstreet) | `docs/jobs/` | Planning |
 
 ## Documentation ownership
 
@@ -37,4 +37,4 @@ When changing implementation status, issue dependencies, or milestone gates with
 
 Gmail ingest, the `inbox-message/v0` envelope, and processed-message tracking are currently defined in the expense contract but may be shared by other projects. There is no shared-layer document yet. When a change affects any of these, flag it explicitly to the user and note the impact on every project that depends on it.
 
-The job tracker reuses the Gmail adapter and the `inbox-message/v0` envelope unchanged, but keeps its own sender-filtered search, processed-message tracking, and database. A change to the adapter or envelope therefore affects both projects; a change to either project's processing state affects only that project.
+The job tracker reuses the Gmail adapter and the `inbox-message/v0` envelope, turning on an adapter option that prefers the HTML alternative, which the expense app leaves off. It keeps its own inbox search, processed-message tracking, and database. A change to the adapter or envelope therefore affects both projects; a change to either project's processing state affects only that project.
