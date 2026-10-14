@@ -28,6 +28,10 @@ class AnalysisError(RuntimeError):
     """An operational analyser failure that must remain retryable."""
 
 
+class ContextOverflowError(AnalysisError):
+    """The prompt did not fit the analyser context budget, so the output is untrusted."""
+
+
 @dataclass(frozen=True)
 class RuntimeMetadata:
     runtime: str
@@ -153,7 +157,7 @@ class OllamaAnalyser:
                 not isinstance(prompt_tokens, int)
                 or prompt_tokens + MAX_GENERATED_TOKENS > CONTEXT_SIZE
             ):
-                raise AnalysisError("prompt exceeded the analyser context budget")
+                raise ContextOverflowError("prompt exceeded the analyser context budget")
             content = body["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("message.content is not a string")

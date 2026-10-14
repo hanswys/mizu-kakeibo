@@ -13,7 +13,7 @@ from mizu_kakeibo.constants import (
     OLLAMA_VERSION,
 )
 from mizu_kakeibo.models import ExpenseAnalysisInput
-from mizu_kakeibo.ollama import AnalysisError, OllamaAnalyser
+from mizu_kakeibo.ollama import AnalysisError, ContextOverflowError, OllamaAnalyser
 
 _ABSENT = object()
 
@@ -126,5 +126,5 @@ def test_truncated_or_unmeasured_prompt_discards_valid_output(
     analyser = OllamaAnalyser(
         client=client_for(content=expense_content(), prompt_eval_count=prompt_eval_count)
     )
-    with pytest.raises(AnalysisError, match="context budget"):
+    with pytest.raises(ContextOverflowError, match="context budget"):
         analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
