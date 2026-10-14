@@ -5,6 +5,13 @@ scope lives in [`docs/expenses/MVP.md`](docs/expenses/MVP.md), and the
 implemented technical behavior lives in
 [`docs/expenses/inbox-expense-contract.md`](docs/expenses/inbox-expense-contract.md).
 
+## Projects
+
+- Expenses (Mizu Kakeibo): [`docs/expenses/MVP.md`](docs/expenses/MVP.md)
+- Job-application tracker (draft): [`docs/jobs/MVP.md`](docs/jobs/MVP.md)
+
+The setup and commands below apply to the expense project.
+
 ## Setup
 
 ```sh
