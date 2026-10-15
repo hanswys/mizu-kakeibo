@@ -5,12 +5,27 @@ import json
 import httpx
 import pytest
 
-from mizu_kakeibo.constants import MODEL, MODEL_DIGEST, OLLAMA_VERSION
+from mizu_kakeibo.constants import (
+    CONTEXT_SIZE,
+    MAX_GENERATED_TOKENS,
+    MODEL,
+    MODEL_DIGEST,
+    OLLAMA_VERSION,
+)
 from mizu_kakeibo.models import ExpenseAnalysisInput
-from mizu_kakeibo.ollama import AnalysisError, OllamaAnalyser
+from mizu_kakeibo.ollama import AnalysisError, ContextOverflowError, OllamaAnalyser
+
+_ABSENT = object()
 
 
-def client_for(*, version=OLLAMA_VERSION, model=MODEL, digest=MODEL_DIGEST, content=None):
+def client_for(
+    *,
+    version=OLLAMA_VERSION,
+    model=MODEL,
+    digest=MODEL_DIGEST,
+    content=None,
+    prompt_eval_count=900,
+):
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/version":
             return httpx.Response(200, json={"version": version})
@@ -31,20 +46,23 @@ def client_for(*, version=OLLAMA_VERSION, model=MODEL, digest=MODEL_DIGEST, cont
             assert body["options"] == {
                 "temperature": 0,
                 "seed": 42,
-                "num_ctx": 32768,
+                "num_ctx": 12288,
                 "num_predict": 512,
             }
             assert body["format"]["additionalProperties"] is False
             user_message = json.loads(body["messages"][1]["content"])
             assert "source" not in user_message["message"]
-            return httpx.Response(200, json={"message": {"content": content}})
+            response = {"message": {"content": content}}
+            if prompt_eval_count is not _ABSENT:
+                response["prompt_eval_count"] = prompt_eval_count
+            return httpx.Response(200, json=response)
         return httpx.Response(404)
 
     return httpx.Client(transport=httpx.MockTransport(handler), base_url="http://test")
 
 
-def test_calls_schema_constrained_chat_and_validates_output(inbox_message) -> None:
-    content = json.dumps(
+def expense_content() -> str:
+    return json.dumps(
         {
             "contract_version": "expense-analysis-output/v0",
             "decision": "expense",
@@ -58,7 +76,10 @@ def test_calls_schema_constrained_chat_and_validates_output(inbox_message) -> No
             "missing_fields": [],
         }
     )
-    analyser = OllamaAnalyser(client=client_for(content=content))
+
+
+def test_calls_schema_constrained_chat_and_validates_output(inbox_message) -> None:
+    analyser = OllamaAnalyser(client=client_for(content=expense_content()))
     result = analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
     assert result.transaction is not None
     assert result.transaction.amount_minor == 4250
@@ -83,3 +104,27 @@ def test_malformed_model_output_is_operational_failure(inbox_message) -> None:
         analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
     assert "not JSON" not in str(error.value)
     assert "output contract" in str(error.value)
+
+
+def test_prompt_that_fills_the_reply_budget_is_accepted(inbox_message) -> None:
+    analyser = OllamaAnalyser(
+        client=client_for(
+            content=expense_content(),
+            prompt_eval_count=CONTEXT_SIZE - MAX_GENERATED_TOKENS,
+        )
+    )
+    assert analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message)).transaction
+
+
+@pytest.mark.parametrize(
+    "prompt_eval_count",
+    [CONTEXT_SIZE - MAX_GENERATED_TOKENS + 1, CONTEXT_SIZE, _ABSENT, None],
+)
+def test_truncated_or_unmeasured_prompt_discards_valid_output(
+    inbox_message, prompt_eval_count
+) -> None:
+    analyser = OllamaAnalyser(
+        client=client_for(content=expense_content(), prompt_eval_count=prompt_eval_count)
+    )
+    with pytest.raises(ContextOverflowError, match="context budget"):
+        analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
