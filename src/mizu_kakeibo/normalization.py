@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from collections.abc import Sequence
@@ -277,3 +278,10 @@ def normalize_gmail_message(message: dict[str, Any]) -> InboxMessage:
             truncated=sender_truncated or subject_truncated or body_truncated,
         ),
     )
+
+
+def parse_inbox_message(value: Any) -> InboxMessage:
+    """Accept either a normalized v0 envelope or a Gmail MCP full-message response."""
+    if isinstance(value, dict) and value.get("contract_version") == INBOX_MESSAGE_CONTRACT:
+        return InboxMessage.model_validate_json(json.dumps(value))
+    return normalize_gmail_message(value)

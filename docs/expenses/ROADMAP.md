@@ -52,7 +52,7 @@ Use Gmail MCP to collect a fixed private set of 20 to 50 representative inbox me
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `in-progress` (the `evaluate` command is implemented. The V0-1 private set was not carried to the current machine, so the real run awaits a rebuilt set labelled against `expense-v0.4`. Rebuilding it through the claude.ai Gmail connector needs the `RAW` message converter planned in the job tracker's [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer).)
 
 **Blocked by:** V0-1
 

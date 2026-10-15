@@ -10,9 +10,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .models import AnalysisDecision, InboxMessage, Transaction
-from .normalization import NormalizationError, normalize_gmail_message
-from .ollama import OllamaAnalyser
+from .evaluation import evaluate, load_dataset
+from .models import AnalysisDecision, Transaction
+from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
+from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingStatus
 from .storage import ReviewResolutionError, Store
 
@@ -50,12 +51,7 @@ def command_normalize(args: argparse.Namespace) -> int:
 
 
 def command_process(args: argparse.Namespace) -> int:
-    messages = []
-    for value in _objects(_read_json(args.input)):
-        if isinstance(value, dict) and value.get("contract_version") == "inbox-message/v0":
-            messages.append(InboxMessage.model_validate_json(json.dumps(value)))
-        else:
-            messages.append(normalize_gmail_message(value))
+    messages = [parse_inbox_message(value) for value in _objects(_read_json(args.input))]
     with OllamaAnalyser() as analyser:
         results = InboxProcessor(_store(args), analyser).process_batch(
             messages, reevaluate=args.reevaluate
@@ -74,6 +70,16 @@ def command_process(args: argparse.Namespace) -> int:
         None,
     )
     return 1 if any(result.status is ProcessingStatus.FAILED for result in results) else 0
+
+
+def command_evaluate(args: argparse.Namespace) -> int:
+    dataset = load_dataset(_read_json(args.dataset))
+    with OllamaAnalyser() as analyser:
+        report = evaluate(dataset, analyser, runs=args.runs)
+    if args.output is not None:
+        _write_json(report, args.output)
+    _write_json(report["summary"], None)
+    return 0
 
 
 def command_filter_new(args: argparse.Namespace) -> int:
@@ -167,6 +173,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_storage_options(process)
     process.set_defaults(handler=command_process)
 
+    evaluate_parser = subparsers.add_parser(
+        "evaluate", help="score the analyser against a private labelled dataset"
+    )
+    evaluate_parser.add_argument("dataset", type=Path)
+    evaluate_parser.add_argument("--runs", type=int, default=3)
+    evaluate_parser.add_argument("--output", type=Path)
+    evaluate_parser.set_defaults(handler=command_evaluate)
+
     filter_new = subparsers.add_parser(
         "filter-new", help="filter Gmail search IDs before full-message retrieval"
     )
@@ -197,6 +211,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return int(args.handler(args))
     except (
+        AnalysisError,
         FileNotFoundError,
         json.JSONDecodeError,
         NormalizationError,
