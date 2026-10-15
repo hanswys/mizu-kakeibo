@@ -52,13 +52,13 @@ Use Gmail MCP to collect a fixed private set of 20 to 50 representative inbox me
 
 **Type:** HITL
 
-**Status:** `in-progress` (the `evaluate` command is implemented. The V0-1 private set was not carried to the current machine, so the real run awaits a rebuilt set labelled against `expense-v0.4`. Rebuilding it through the claude.ai Gmail connector needs the `RAW` message converter planned in the job tracker's [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer).)
+**Status:** `in-progress` (the `evaluate` command is implemented, and the adapter now reads the claude.ai Gmail connector's `RAW` messages, pulled forward from the job tracker's [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer) as shared work. The V0-1 private set was not carried to the current machine, so the real run awaits a set rebuilt through the connector and labelled against `expense-v0.4`.)
 
 **Blocked by:** V0-1
 
 ### What to build
 
-Run every example through the versioned `qwen2.5:14b` configuration on local Ollama. Score classification, transaction extraction, uncertainty handling, consistency, latency, and local resource usage. Finish with a `proceed`, `revise`, or `stop` decision for Version 0.5.
+Run every example through the versioned `qwen2.5:14b` configuration on local Ollama. Score classification, transaction extraction, uncertainty handling, consistency, latency, and local resource usage. Record each example's Gmail Purchases membership so a later decision on the deferred Purchases gate has evidence, and use the context-overflow count to decide how over-budget messages are handled. Finish with a `proceed`, `revise`, or `stop` decision for Version 0.5.
 
 ### Acceptance criteria
 
@@ -71,6 +71,7 @@ Run every example through the versioned `qwen2.5:14b` configuration on local Oll
 - [ ] Repeated runs measure decision and extraction consistency.
 - [ ] Misclassifications are recorded as sanitized error categories without copying personal content into the repository.
 - [ ] Model, model version, analyser contract version, prompt version, and runtime settings are recorded for reproducibility.
+- [ ] The report counts expected expenses and review items inside and outside Gmail's Purchases category.
 - [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
 
 ## Version 0 completion gate

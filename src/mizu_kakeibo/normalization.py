@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import email
 import json
 import re
 import unicodedata
 from collections.abc import Sequence
 from datetime import datetime, timezone
+from email import policy
+from email.message import EmailMessage
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from typing import Any
@@ -228,10 +233,81 @@ def _shorten(value: str, limit: int) -> tuple[str, bool]:
     return value[:limit], True
 
 
+def _mime_headers(part: EmailMessage) -> list[dict[str, str]]:
+    headers = []
+    for name, raw_value in part.raw_items():
+        try:
+            value = str(part.policy.header_fetch_parse(name, raw_value))
+        except (IndexError, TypeError, ValueError):
+            value = re.sub(r"\r?\n[ \t]+", " ", str(raw_value)).strip()
+        headers.append({"name": name, "value": value})
+    return headers
+
+
+def _mime_part(part: EmailMessage, part_id: str) -> dict[str, Any]:
+    mime_type = part.get_content_type()
+    filename = part.get_filename() or ""
+    children = None
+    content = None
+    size = 0
+    if part.get_content_maintype() == "multipart":
+        children = [
+            _mime_part(child, f"{part_id}.{index}" if part_id else str(index))
+            for index, child in enumerate(part.iter_parts())
+        ]
+    elif not part.is_multipart():
+        payload = part.get_payload(decode=True)
+        size = len(payload) if isinstance(payload, bytes) else 0
+        is_text = mime_type in {"text/plain", "text/html"}
+        if is_text and isinstance(payload, bytes) and not filename and not part.is_attachment():
+            charset = part.get_content_charset() or "utf-8"
+            try:
+                content = payload.decode(charset, errors="replace")
+            except LookupError:
+                content = payload.decode("utf-8", errors="replace")
+    return {
+        "part_id": part_id,
+        "mime_type": mime_type,
+        "filename": filename,
+        "headers": _mime_headers(part),
+        "body": {
+            "size": size,
+            "base64_url_content": None,
+            "content": content,
+            "attachment_id": None,
+        },
+        "parts": children,
+    }
+
+
+def gmail_raw_to_full_message(message: dict[str, Any]) -> dict[str, Any]:
+    """Rebuild a Gmail connector `RAW` response as the full-message shape the normalizer reads."""
+    raw = message.get("raw")
+    if not isinstance(raw, str) or not raw:
+        raise NormalizationError("Gmail raw message has no raw content")
+    try:
+        data = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+    except (binascii.Error, ValueError) as error:
+        raise NormalizationError("Gmail raw message is not valid base64url") from error
+    parsed = email.message_from_bytes(data, policy=policy.default)
+    internal_date = message.get("internalDate", message.get("internal_date"))
+    if isinstance(internal_date, int) and not isinstance(internal_date, bool):
+        internal_date = str(internal_date)
+    return {
+        "id": message.get("id"),
+        "thread_id": message.get("threadId", message.get("thread_id")),
+        "label_ids": message.get("labelIds", message.get("label_ids")),
+        "internal_date": internal_date if isinstance(internal_date, str) else None,
+        "payload": _mime_part(parsed, ""),
+    }
+
+
 def normalize_gmail_message(message: dict[str, Any]) -> InboxMessage:
-    """Convert one verified Gmail MCP full-message response into the v0 envelope."""
+    """Convert one Gmail full-message or connector `RAW` response into the v0 envelope."""
     if not isinstance(message, dict):
         raise NormalizationError("Gmail message must be a JSON object")
+    if message.get("payload") is None and isinstance(message.get("raw"), str):
+        message = gmail_raw_to_full_message(message)
     message_id = message.get("id")
     if not isinstance(message_id, str) or not message_id:
         raise NormalizationError("Gmail message has no id")
@@ -281,7 +357,7 @@ def normalize_gmail_message(message: dict[str, Any]) -> InboxMessage:
 
 
 def parse_inbox_message(value: Any) -> InboxMessage:
-    """Accept either a normalized v0 envelope or a Gmail MCP full-message response."""
+    """Accept a normalized v0 envelope or a Gmail full-message or connector `RAW` response."""
     if isinstance(value, dict) and value.get("contract_version") == INBOX_MESSAGE_CONTRACT:
         return InboxMessage.model_validate_json(json.dumps(value))
     return normalize_gmail_message(value)

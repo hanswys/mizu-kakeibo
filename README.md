@@ -38,15 +38,15 @@ contract.
 
 ## Commands
 
-Normalize one Gmail MCP `read_email(format="full")` response, or a JSON array of
-responses:
+Normalize one Gmail MCP `read_email(format="full")` response or claude.ai Gmail
+connector `get_message(RAW)` response, or a JSON array of responses:
 
 ```sh
 uv run mizu-kakeibo normalize private-gmail-batch.json --output private-envelopes.json
 ```
 
-Before retrieving full messages, filter a `search_email_ids` response against the
-processed-message store:
+Before retrieving full messages, filter a `search_email_ids` response, or a JSON
+array of message IDs, against the processed-message store:
 
 ```sh
 uv run mizu-kakeibo filter-new private-search-result.json \

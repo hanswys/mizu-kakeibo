@@ -74,7 +74,7 @@ Resolve the MVP's open questions using the sampled layouts, update the MVP, then
 
 **Type:** AFK
 
-**Status:** `needs-triage`
+**Status:** `in-progress` (the `RAW` converter was delivered on 2026-10-15 as shared work for the expense app's V0-2; the HTML option remains)
 
 **Blocked by:** J0-2
 
@@ -86,10 +86,11 @@ This changes shared infrastructure. Update the expense contract's Gmail boundary
 
 ### Acceptance criteria
 
-- [ ] A `RAW` connector message converts into the MIME-part shape and normalizes into a valid `inbox-message/v0` envelope, with headers, received time, and text preserved.
+- [x] A `RAW` connector message converts into the MIME-part shape and normalizes into a valid `inbox-message/v0` envelope, with headers, received time, and text preserved.
 - [ ] With the HTML option on, the envelope for a stub-plain-text layout contains the job title and status wording from the HTML part.
 - [ ] With the option off, normalization output is unchanged, and the expense tests pass without modification.
-- [ ] The expense contract describes the observed connector tools and response shapes and the new option.
+- [x] The expense contract describes the observed connector tools and response shapes.
+- [ ] The expense contract describes the HTML option.
 - [ ] Tests use sanitized synthetic fixtures only.
 
 ## Issue J0-4 Build the private evaluation set
