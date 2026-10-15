@@ -38,6 +38,29 @@ contract.
 
 ## Commands
 
+### Sync
+
+Ask Claude Code to run the `expense-sync` skill (`/expense-sync`). It searches the
+inbox through the claude.ai Gmail connector, then runs the commands below from the
+repository root. `select-new` and `collect-raw` read the connector results from the
+current Claude Code session transcript, as described in the contract's connector
+sync section:
+
+```sh
+uv run mizu-kakeibo select-new --output private-run/selection.json \
+  --database private-kakeibo.db --ledger private-ledger.csv
+uv run mizu-kakeibo collect-raw private-run/selection.json \
+  --output private-run/messages.json
+uv run mizu-kakeibo process private-run/messages.json \
+  --selection private-run/selection.json \
+  --database private-kakeibo.db --ledger private-ledger.csv
+```
+
+`process` prints a summary of expense, not-expense, review, skipped, failed, and
+deferred message IDs, followed by the result for each message.
+
+### Individual steps
+
 Normalize one Gmail MCP `read_email(format="full")` response or claude.ai Gmail
 connector `get_message(RAW)` response, or a JSON array of responses:
 
@@ -54,7 +77,8 @@ uv run mizu-kakeibo filter-new private-search-result.json \
 ```
 
 Process either full Gmail responses or normalized envelopes through Ollama and
-persist the decisions:
+persist the decisions. Add `--selection` with a `select-new` or `filter-new` output
+to include its skipped and deferred IDs in the summary:
 
 ```sh
 uv run mizu-kakeibo process private-envelopes.json \
@@ -62,8 +86,8 @@ uv run mizu-kakeibo process private-envelopes.json \
 ```
 
 Use `--reevaluate` to explicitly replace the active analysis for an already
-processed source. Review items can be listed and resolved without modifying the
-source message:
+processed source. Review items can be listed, each with a link to its Gmail message,
+and resolved without modifying the source message:
 
 ```sh
 uv run mizu-kakeibo review-list --database private-kakeibo.db
