@@ -7,6 +7,8 @@ description: Run one Mizu Kakeibo agent-driven sync. Find new Gmail inbox messag
 
 One sync follows the connector sync in [the contract](../../../docs/expenses/inbox-expense-contract.md#connector-sync). Run every command from the repository root so `select-new` and `collect-raw` find this session's transcript.
 
+Each sync adds its search results and raw messages to the session's context, so run one sync per chat. If this chat has already run a sync, suggest the user start a new chat before the next one.
+
 Real message content, message IDs, the database, the ledger, and run files are private. Keep them under `~/mizu-kakeibo-private/live/` and never in the repository. Do not quote message bodies in chat; refer to messages by sender, subject, and Gmail link only when the user is reviewing them.
 
 Shell variables do not persist between commands, and zsh does not split a variable into several arguments, so write the storage flags out in every command that needs them:
