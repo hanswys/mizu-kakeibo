@@ -74,7 +74,7 @@ Resolve the MVP's open questions using the sampled layouts, update the MVP, then
 
 **Type:** AFK
 
-**Status:** `in-progress` (the `RAW` converter was delivered on 2026-10-15 as shared work for the expense app's V0-2; the HTML option remains)
+**Status:** `in-progress` (the `RAW` converter was delivered on 2026-10-15 as shared work for the expense app's V0-2; the HTML option remains. For the expense app's V0-2 revision, the shared normalizer now also uses HTML when the plain-text alternative is a short stub (see the expense contract's [normalization rules](../expenses/inbox-expense-contract.md#2-normalized-inbox-message-envelope)). LinkedIn stubs were not tested against that rule, and their footer may make them too long for it, so the option is still needed.)
 
 **Blocked by:** J0-2
 
