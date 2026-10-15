@@ -28,6 +28,7 @@ class ReviewResolutionError(ValueError):
 class ReviewItem:
     provider: str
     message_id: str
+    thread_id: str | None
     analysis_id: int
     reason: str
     missing_fields: list[str]
@@ -266,9 +267,10 @@ class Store:
         with self.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT a.provider, a.message_id, a.id, a.reason,
+                SELECT a.provider, a.message_id, m.thread_id, a.id, a.reason,
                        a.missing_fields_json, a.processed_at
                 FROM analyses a
+                JOIN messages m ON m.provider = a.provider AND m.message_id = a.message_id
                 LEFT JOIN resolutions r ON r.analysis_id = a.id
                 WHERE a.active = 1 AND a.decision = 'needs_review' AND r.id IS NULL
                 ORDER BY a.processed_at, a.id
@@ -278,6 +280,7 @@ class Store:
             ReviewItem(
                 provider=row["provider"],
                 message_id=row["message_id"],
+                thread_id=row["thread_id"],
                 analysis_id=row["id"],
                 reason=row["reason"],
                 missing_fields=json.loads(row["missing_fields_json"]),

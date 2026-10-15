@@ -33,6 +33,8 @@ There is no metadata relevance model, Gmail-label branch, or second analyser in 
 
 ## 1. Gmail MCP boundary
 
+Two Gmail tools have been used. The local Gmail MCP server, verified on 2026-10-06 and described in the next two subsections, is legacy: it is no longer installed, but the normalizer still reads its `read_email` responses and `filter-new` still reads its search responses. Syncs use the [claude.ai Gmail connector](#claudeai-gmail-connector), as described in [connector sync](#connector-sync).
+
 ### Verified search behavior
 
 Call `search_email_ids` using the system label ID `INBOX` and a bounded result count. The observed structured response is:
@@ -111,6 +113,17 @@ The adapter converts a `RAW` response into the full-message shape above before n
 - Every other part, and every attachment, has null `body.content`. `base64_url_content` and `attachment_id` are always null, so attachment bytes never reach the normalizer.
 
 Normalization then proceeds unchanged. The job tracker's planned option to prefer the HTML alternative is not yet part of the adapter; see its [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer).
+
+### Connector sync
+
+One sync selects new inbox messages from connector searches, fetches each in `RAW` format, and processes the batch. The agent makes the connector calls; the tool reads their results from the agent's own Claude Code session transcript, so message content is never copied by the agent.
+
+- **Search.** `search_threads` with `in:inbox after:2026/09/30` and the metadata-only view, following page tokens to the end. Gmail's date operators do not use Malaysia time, so the query starts a day early and selection applies the exact start.
+- **Select.** `select-new` reads message metadata from the session's `search_threads` and `get_thread` results. A message is eligible when it has the `INBOX` label and an `internalDate` on or after `2026-10-01T00:00:00+08:00`; anything earlier is never processed. Eligible IDs are ordered oldest first and checked against the processed-message store. At most 50 new IDs are selected; the rest are reported as deferred, and a later sync continues with them. A thread whose results list fewer messages than its `messageCount` is reported as incomplete, and `get_thread` must list its messages before the selection is used.
+- **Fetch and collect.** The agent calls `get_message(RAW)` for each selected ID. `collect-raw` finds those responses in the session transcript, inline or in the files Claude Code saves for results too large to show inline, and writes them as one batch. It reads only results of Gmail connector tools, and fails, writing what it found, when any selected ID is missing.
+- **Process.** `process` with the selection reports the IDs of the run in six groups: `expense`, `not_expense`, and `needs_review` for successful analyses; `skipped` for IDs already processed, at selection or at persistence; `failed` for operational failures, which remain retryable; and `deferred` for new IDs beyond the batch limit.
+
+Reading the transcript depends on Claude Code's private file layout, which may change without notice. It is a stopgap for the agent-driven sync; Version 1 replaces the agent and transcript with read-only Gmail API access.
 
 ## 2. Normalized inbox-message envelope
 
@@ -329,6 +342,8 @@ Every successful analysis creates one private decision record containing:
 Only `expense` appends a private CSV ledger row. That row contains the source provider, Gmail message ID, merchant, amount in minor units, currency, and transaction date. The Gmail message ID must be unique in the ledger.
 
 `needs_review` creates a review item linked to the same source. `not_expense` creates neither a transaction nor a review item.
+
+The review list links each Gmail item to its message as `https://mail.google.com/mail/#all/thread-f:<thread>|msg-f:<message>`, where `<thread>` and `<message>` are the decimal values of the hexadecimal Gmail thread and message IDs, matching the connector's `viewUrl`. Without an `authuser` parameter, Gmail opens the browser's default signed-in account.
 
 Raw message bodies, credentials, model inputs, private evaluation examples, ledgers, and local databases remain outside version control and ordinary application logs.
 

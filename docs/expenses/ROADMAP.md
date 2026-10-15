@@ -89,7 +89,7 @@ Move the proven full-message analyser into a small local tool. The agent still r
 | Area | Choice |
 | --- | --- |
 | Runtime | Python with `pyproject.toml` |
-| Gmail retrieval | Gmail MCP controlled by the agent |
+| Gmail retrieval | The claude.ai Gmail connector, controlled by the agent through the `expense-sync` skill |
 | Expense analyser | Local Ollama with `qwen2.5:14b`, using the versioned prompt and runtime settings in the [contract](inbox-expense-contract.md#4-model-runtime-and-prompt) |
 | Validation | Pydantic |
 | Storage | SQLite with a unique Gmail message ID |
@@ -99,7 +99,7 @@ Move the proven full-message analyser into a small local tool. The agent still r
 
 **Type:** AFK
 
-**Status:** `implemented` (the V0-2 `proceed` gate was met on 2026-10-15; milestone acceptance is next)
+**Status:** `complete` (the V0-2 `proceed` gate was met on 2026-10-15)
 
 **Blocked by:** V0-2 with a `proceed` decision
 
@@ -124,7 +124,7 @@ Create one command that accepts a batch of normalized full Gmail messages from t
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `in-progress` (the [connector sync](inbox-expense-contract.md#connector-sync) and the `expense-sync` skill are built; the first real sync with the user is next. About 200 inbox threads arrived since 2026-10-01, so the first sync needs several 50-message runs.)
 
 **Blocked by:** V0.5-1
 
