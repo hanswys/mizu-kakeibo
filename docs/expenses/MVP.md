@@ -58,7 +58,7 @@ The authoritative field definitions and invariants live in the [inbox-to-expense
 ### Gmail retrieval
 
 - Search new inbox messages.
-- Start from a fixed date: inbox messages received before 2026-10-01 in Malaysia time are never processed.
+- Start from a fixed date: inbox messages received before 2026-10-10 in Malaysia time are never processed.
 - Process new messages in bounded batches, oldest first; the next sync continues with any that remain.
 - Keep the Gmail message ID as the unique source identifier.
 - Skip processed IDs unless the user explicitly requests re-evaluation.

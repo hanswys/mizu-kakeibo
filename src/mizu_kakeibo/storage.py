@@ -153,6 +153,20 @@ class Store:
         processed = {row["message_id"] for row in rows}
         return [message_id for message_id in unique_ids if message_id not in processed]
 
+    def latest_received_at(self, provider: str) -> datetime | None:
+        """Return the newest received time among actively processed messages."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT m.envelope_json FROM messages m JOIN analyses a "
+                "ON a.provider = m.provider AND a.message_id = m.message_id "
+                "WHERE m.provider = ? AND a.active = 1",
+                (provider,),
+            ).fetchall()
+        received = [
+            InboxMessage.model_validate_json(row["envelope_json"]).received_at for row in rows
+        ]
+        return max(received, default=None)
+
     def save_analysis(
         self,
         envelope: InboxMessage,

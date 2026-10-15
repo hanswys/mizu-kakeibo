@@ -173,7 +173,7 @@ def connector_session(tmp_path, calls) -> str:
 def test_connector_sync_selects_collects_processes_and_links_review_items(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    received = "1791302400000"  # 2026-10-07T00:00:00+08:00
+    received = "1791734400000"  # 2026-10-12T00:00:00+08:00
     old = "1790000000000"  # 2026-09-23, before the sync start
     first = raw_connector_message("1a13f73d4246d612", received)
     second = raw_connector_message("1a13f724be7b45ad", str(int(received) + 1))
@@ -266,6 +266,11 @@ def test_connector_sync_selects_collects_processes_and_links_review_items(
     replay = json.loads(capsys.readouterr().out)
     assert replay["message_ids"] == [second["id"]]
     assert replay["already_processed_ids"] == [first["id"]]
+
+    assert cli.main(["search-query"] + storage) == 0
+    assert json.loads(capsys.readouterr().out) == {"query": "in:inbox after:2026/10/11"}
+    assert cli.main(["search-query", "--full"] + storage) == 0
+    assert json.loads(capsys.readouterr().out) == {"query": "in:inbox after:2026/10/09"}
 
 
 def test_collect_raw_fails_when_a_selected_message_was_not_fetched(tmp_path, capsys) -> None:

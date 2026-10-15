@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 
@@ -78,3 +78,19 @@ def select_new_messages(
         excluded_ids=sorted(excluded),
         incomplete_thread_ids=sorted(incomplete_thread_ids),
     )
+
+
+def search_query(received_since: datetime, latest_processed: datetime | None) -> str:
+    """Build the inbox search for a sync.
+
+    The search starts at the newest processed message when it is later than the sync start,
+    since earlier messages were processed oldest first. Gmail's date operators do not use the
+    sync start's time zone, so the date starts one day early; selection applies the exact start.
+    """
+    if received_since.tzinfo is None:
+        raise ValueError("the sync start must include a UTC offset")
+    start = received_since
+    if latest_processed is not None and latest_processed > start:
+        start = latest_processed
+    day = (start.astimezone(received_since.tzinfo) - timedelta(days=1)).date()
+    return f"in:inbox after:{day:%Y/%m/%d}"
