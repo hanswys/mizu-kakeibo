@@ -33,6 +33,18 @@ class ContextOverflowError(AnalysisError):
 
 
 @dataclass(frozen=True)
+class TokenUsage:
+    prompt_tokens: int
+    generated_tokens: int
+
+
+@dataclass(frozen=True)
+class ModelMemory:
+    total_bytes: int
+    gpu_bytes: int
+
+
+@dataclass(frozen=True)
 class RuntimeMetadata:
     runtime: str
     runtime_version: str
@@ -56,6 +68,7 @@ class OllamaAnalyser:
         self._owns_client = client is None
         self._client = client or httpx.Client(base_url=base_url, timeout=timeout)
         self._metadata: RuntimeMetadata | None = None
+        self.last_usage: TokenUsage | None = None
 
     def close(self) -> None:
         if self._owns_client:
@@ -127,8 +140,24 @@ class OllamaAnalyser:
         )
         return self._metadata
 
+    def loaded_model_memory(self) -> ModelMemory | None:
+        """Report how much memory the loaded model uses, or None if it is not loaded."""
+        try:
+            response = self._client.get("/api/ps")
+            response.raise_for_status()
+            models = response.json().get("models", [])
+        except (httpx.HTTPError, json.JSONDecodeError, AttributeError) as error:
+            raise AnalysisError(f"cannot read loaded model memory: {error}") from error
+        for entry in models:
+            if isinstance(entry, dict) and MODEL in {entry.get("name"), entry.get("model")}:
+                total, gpu = entry.get("size"), entry.get("size_vram")
+                if isinstance(total, int) and isinstance(gpu, int):
+                    return ModelMemory(total_bytes=total, gpu_bytes=gpu)
+        return None
+
     def analyse(self, analyser_input: ExpenseAnalysisInput) -> ExpenseAnalysisOutput:
         self.verify_runtime()
+        self.last_usage = None
         request: dict[str, Any] = {
             "model": MODEL,
             "messages": [
@@ -158,6 +187,9 @@ class OllamaAnalyser:
                 or prompt_tokens + MAX_GENERATED_TOKENS > CONTEXT_SIZE
             ):
                 raise ContextOverflowError("prompt exceeded the analyser context budget")
+            generated_tokens = body.get("eval_count")
+            if isinstance(generated_tokens, int):
+                self.last_usage = TokenUsage(prompt_tokens, generated_tokens)
             content = body["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("message.content is not a string")
