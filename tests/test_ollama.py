@@ -13,7 +13,13 @@ from mizu_kakeibo.constants import (
     OLLAMA_VERSION,
 )
 from mizu_kakeibo.models import ExpenseAnalysisInput
-from mizu_kakeibo.ollama import AnalysisError, ContextOverflowError, OllamaAnalyser
+from mizu_kakeibo.ollama import (
+    AnalysisError,
+    ContextOverflowError,
+    ModelMemory,
+    OllamaAnalyser,
+    TokenUsage,
+)
 
 _ABSENT = object()
 
@@ -52,10 +58,14 @@ def client_for(
             assert body["format"]["additionalProperties"] is False
             user_message = json.loads(body["messages"][1]["content"])
             assert "source" not in user_message["message"]
-            response = {"message": {"content": content}}
+            response = {"message": {"content": content}, "eval_count": 40}
             if prompt_eval_count is not _ABSENT:
                 response["prompt_eval_count"] = prompt_eval_count
             return httpx.Response(200, json=response)
+        if request.url.path == "/api/ps":
+            return httpx.Response(
+                200, json={"models": [{"name": model, "size": 4 * 2**30, "size_vram": 3 * 2**30}]}
+            )
         return httpx.Response(404)
 
     return httpx.Client(transport=httpx.MockTransport(handler), base_url="http://test")
@@ -128,3 +138,25 @@ def test_truncated_or_unmeasured_prompt_discards_valid_output(
     )
     with pytest.raises(ContextOverflowError, match="context budget"):
         analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
+
+
+def test_reports_token_usage_and_loaded_model_memory(inbox_message) -> None:
+    analyser = OllamaAnalyser(client=client_for(content=expense_content()))
+    analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
+
+    assert analyser.last_usage == TokenUsage(prompt_tokens=900, generated_tokens=40)
+    assert analyser.loaded_model_memory() == ModelMemory(4 * 2**30, 3 * 2**30)
+    assert OllamaAnalyser(client=client_for(model="other")).loaded_model_memory() is None
+
+
+def test_call_without_a_response_clears_previous_token_usage(inbox_message) -> None:
+    analyser = OllamaAnalyser(client=client_for(content=expense_content()))
+    analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    analyser._client = httpx.Client(transport=httpx.MockTransport(refuse), base_url="http://test")
+    with pytest.raises(AnalysisError):
+        analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
+    assert analyser.last_usage is None

@@ -22,6 +22,20 @@ The analyser requires Ollama `0.23.1` with the exact `qwen2.5:14b` build named i
 the contract. Data files passed to the commands below are private and must remain
 outside version control.
 
+Homebrew and the Ollama desktop app track newer releases, so install the pinned
+command-line build instead (macOS):
+
+```sh
+mkdir -p ~/.local/opt/ollama-0.23.1 && cd ~/.local/opt/ollama-0.23.1
+curl -fsSL https://github.com/ollama/ollama/releases/download/v0.23.1/ollama-darwin.tgz | tar -xz
+ln -sf ~/.local/opt/ollama-0.23.1/ollama ~/.local/bin/ollama
+ollama serve &            # or run it from a launchd user agent
+ollama pull qwen2.5:14b
+```
+
+The commands refuse to run if the Ollama version or model digest differs from the
+contract.
+
 ## Commands
 
 Normalize one Gmail MCP `read_email(format="full")` response, or a JSON array of
@@ -59,6 +73,17 @@ uv run mizu-kakeibo review-resolve gmail MESSAGE_ID not_expense \
 
 For an accepted or corrected expense, add `--merchant`, `--amount-minor`,
 `--currency`, and `--transaction-date` to `review-resolve`.
+
+Score the analyser against a private labelled dataset without touching the
+database or ledger. The dataset format and scoring rules are defined in the
+contract's evaluation section. The command prints a sanitized summary; `--output`
+writes the full per-example report, which contains message IDs and must stay
+private:
+
+```sh
+uv run mizu-kakeibo evaluate private-eval-dataset.json --runs 3 \
+  --output private-eval-report.json
+```
 
 ## Verification
 
