@@ -16,7 +16,7 @@ from .models import AnalysisDecision, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingStatus
-from .selection import select_new_messages
+from .selection import search_query, select_new_messages
 from .storage import ReviewResolutionError, Store
 from .transcript import collect_raw_messages, connector_message_metadata, current_session_transcript
 
@@ -103,6 +103,12 @@ def command_process(args: argparse.Namespace) -> int:
 
 def _session(args: argparse.Namespace) -> Path:
     return args.session if args.session is not None else current_session_transcript(Path.cwd())
+
+
+def command_search_query(args: argparse.Namespace) -> int:
+    latest = None if args.full else _store(args).latest_received_at("gmail")
+    _write_json({"query": search_query(datetime.fromisoformat(args.received_since), latest)}, None)
+    return 0
 
 
 def command_select_new(args: argparse.Namespace) -> int:
@@ -266,6 +272,16 @@ def build_parser() -> argparse.ArgumentParser:
     filter_new.add_argument("input", type=Path)
     _add_storage_options(filter_new)
     filter_new.set_defaults(handler=command_filter_new)
+
+    search = subparsers.add_parser(
+        "search-query", help="print the Gmail inbox search for the next sync"
+    )
+    search.add_argument("--received-since", default=SYNC_RECEIVED_SINCE)
+    search.add_argument(
+        "--full", action="store_true", help="search from the sync start, ignoring progress"
+    )
+    _add_storage_options(search)
+    search.set_defaults(handler=command_search_query)
 
     select_new = subparsers.add_parser(
         "select-new",

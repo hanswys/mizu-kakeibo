@@ -41,12 +41,15 @@ contract.
 ### Sync
 
 Ask Claude Code to run the `expense-sync` skill (`/expense-sync`). It searches the
-inbox through the claude.ai Gmail connector, then runs the commands below from the
+inbox through the claude.ai Gmail connector with the query `search-query` prints,
+then runs the commands below from the
 repository root. `select-new` and `collect-raw` read the connector results from the
 current Claude Code session transcript, as described in the contract's connector
 sync section:
 
 ```sh
+uv run mizu-kakeibo search-query \
+  --database private-kakeibo.db --ledger private-ledger.csv
 uv run mizu-kakeibo select-new --output private-run/selection.json \
   --database private-kakeibo.db --ledger private-ledger.csv
 uv run mizu-kakeibo collect-raw private-run/selection.json \
