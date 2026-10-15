@@ -356,8 +356,9 @@ The evaluator calls the analyser directly. It writes no decision record, review 
 - Field accuracy is measured only where both the expected and observed decisions are `expense`. Merchant comparison ignores case and repeated whitespace; amount, currency, and date must match exactly. An exact transaction matches on all four fields.
 - A prompt that exceeds the context budget is a context overflow. Any other analyser error caused by transport failure is an operational failure, and any remaining analyser error is an invalid output. None of them counts as a decision.
 - Each example runs once per repeat. Decision consistency requires the same decision or failure on every repeat; output consistency also requires identical extracted transactions.
+- Resource usage reports latency for every call, the median and maximum prompt and generated token counts from Ollama's `prompt_eval_count` and `eval_count` for successful calls, and the loaded model's total memory and GPU share read from Ollama's `/api/ps` after the last repeat. Token and memory fields are null when the runtime does not report them. The first call's latency includes loading the model when it is not already in memory, so the maximum may reflect a cold start.
 
-The full report may contain Gmail message IDs and must stay private. The printed summary contains only runtime metadata, counts, latency, and sanitized error categories, so it may be copied into repository evaluation notes. Neither contains model reasons or message content.
+The full report may contain Gmail message IDs and must stay private. The printed summary contains only runtime metadata, counts, latency, token and memory usage, and sanitized error categories, so it may be copied into repository evaluation notes. Neither contains model reasons or message content.
 
 ## Deferred optimizations
 

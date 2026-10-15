@@ -20,7 +20,7 @@ from .models import (
     Transaction,
 )
 from .normalization import parse_inbox_message
-from .ollama import AnalysisError, ContextOverflowError
+from .ollama import AnalysisError, ContextOverflowError, TokenUsage
 from .processor import Analyser
 
 TRANSACTION_FIELDS = ("merchant", "amount_minor", "currency", "transaction_date")
@@ -83,6 +83,7 @@ class Observation:
     transaction: dict[str, str | int] | None
     failure: str | None
     latency_ms: float
+    usage: TokenUsage | None = None
 
 
 def _observe(analyser: Analyser, message: InboxMessage, clock: Callable[[], float]) -> Observation:
@@ -98,7 +99,13 @@ def _observe(analyser: Analyser, message: InboxMessage, clock: Callable[[], floa
             failure = "invalid_output"
         return Observation(None, None, failure, (clock() - started) * 1000)
     transaction = output.transaction.model_dump(mode="json") if output.transaction else None
-    return Observation(output.decision.value, transaction, None, (clock() - started) * 1000)
+    return Observation(
+        output.decision.value,
+        transaction,
+        None,
+        (clock() - started) * 1000,
+        getattr(analyser, "last_usage", None),
+    )
 
 
 def _merchant_key(value: str | int) -> str:
@@ -188,6 +195,34 @@ def _latency_summary(latencies: Sequence[float]) -> dict[str, float]:
     }
 
 
+def _token_summary(usages: Sequence[TokenUsage]) -> dict[str, Any] | None:
+    if not usages:
+        return None
+    prompt = [usage.prompt_tokens for usage in usages]
+    generated = [usage.generated_tokens for usage in usages]
+    return {
+        "measured_calls": len(usages),
+        "prompt": {"median": statistics.median(prompt), "max": max(prompt)},
+        "generated": {"median": statistics.median(generated), "max": max(generated)},
+    }
+
+
+def _memory_summary(analyser: Analyser) -> dict[str, float] | None:
+    read_memory = getattr(analyser, "loaded_model_memory", None)
+    if read_memory is None:
+        return None
+    try:
+        memory = read_memory()
+    except AnalysisError:
+        return None
+    if memory is None or memory.total_bytes <= 0:
+        return None
+    return {
+        "total_gib": round(memory.total_bytes / 2**30, 2),
+        "gpu_fraction": round(memory.gpu_bytes / memory.total_bytes, 2),
+    }
+
+
 def evaluate(
     dataset: EvaluationDataset,
     analyser: Analyser,
@@ -202,6 +237,7 @@ def evaluate(
     run_observations = [
         [_observe(analyser, example.message, clock) for example in examples] for _ in range(runs)
     ]
+    model_memory = _memory_summary(analyser)
 
     per_example = []
     decision_consistent = 0
@@ -240,6 +276,10 @@ def evaluate(
         "latency_ms": _latency_summary(
             [o.latency_ms for observations in run_observations for o in observations]
         ),
+        "tokens": _token_summary(
+            [o.usage for observations in run_observations for o in observations if o.usage]
+        ),
+        "model_memory": model_memory,
         "error_categories": dict(
             sorted(Counter(c for entry in per_example for c in entry["error_categories"]).items())
         ),

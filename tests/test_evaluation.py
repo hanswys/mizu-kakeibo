@@ -12,7 +12,13 @@ from mizu_kakeibo import cli
 from mizu_kakeibo.constants import ANALYSIS_OUTPUT_CONTRACT, PROMPT_VERSION
 from mizu_kakeibo.evaluation import evaluate, load_dataset
 from mizu_kakeibo.models import AnalysisDecision, ExpenseAnalysisOutput, Transaction
-from mizu_kakeibo.ollama import AnalysisError, ContextOverflowError, RuntimeMetadata
+from mizu_kakeibo.ollama import (
+    AnalysisError,
+    ContextOverflowError,
+    ModelMemory,
+    RuntimeMetadata,
+    TokenUsage,
+)
 
 METADATA = RuntimeMetadata(
     runtime="ollama",
@@ -159,6 +165,47 @@ def test_scores_decisions_fields_and_consistency(inbox_message):
     assert summary["error_categories"]["amount_minor_mismatch"] == 1
     assert report["examples"][3]["observed"] == ["expense", "invalid_output"]
     assert report["examples"][3]["error_categories"] == ["false_expense", "invalid_output"]
+
+
+def test_reports_token_usage_and_model_memory_when_available(inbox_message):
+    data = load_dataset(
+        dataset(
+            example(inbox_message, "a", "not_expense"),
+            example(inbox_message, "b", "not_expense"),
+        )
+    )
+    usages = iter([TokenUsage(400, 30), TokenUsage(1200, 50)])
+
+    class MeasuredAnalyser(ScriptedAnalyser):
+        last_usage = None
+
+        def analyse(self, analyser_input):
+            result = super().analyse(analyser_input)
+            self.last_usage = next(usages)
+            return result
+
+        def loaded_model_memory(self):
+            return ModelMemory(total_bytes=12 * 2**30, gpu_bytes=9 * 2**30)
+
+    analyser = MeasuredAnalyser({"a": [output("not_expense")], "b": [output("not_expense")]})
+
+    summary = evaluate(data, analyser)["summary"]
+
+    assert summary["tokens"] == {
+        "measured_calls": 2,
+        "prompt": {"median": 800, "max": 1200},
+        "generated": {"median": 40, "max": 50},
+    }
+    assert summary["model_memory"] == {"total_gib": 12.0, "gpu_fraction": 0.75}
+
+
+def test_resource_usage_is_null_when_the_analyser_cannot_report_it(inbox_message):
+    data = load_dataset(dataset(example(inbox_message, "a", "not_expense")))
+
+    summary = evaluate(data, ScriptedAnalyser({"a": [output("not_expense")]}))["summary"]
+
+    assert summary["tokens"] is None
+    assert summary["model_memory"] is None
 
 
 def test_context_overflow_is_counted_separately(inbox_message):
