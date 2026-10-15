@@ -101,12 +101,12 @@ The run used the 12 messages the changes target (every decision error, every mer
 | Missed expenses | 0 | 0 |
 | Expenses sent to review | 1 | 0 |
 | Amount, currency, and date correct | 4 of 4 | 5 of 5 |
-| Merchant correct | 0 of 4 | 2 of 5 |
+| Merchant correct | 0 of 4 | 4 of 5 |
 
 The `expense-v0.4` column re-scores the earlier run against the current labels; it saw the Domino's message as a stub and the bare-`$` receipt as an `MYR` expense.
 
 - **Currency:** under `expense-v0.6` the model reported the bare-`$` receipt as `USD`, a currency the message never names, so the `MYR`-only check let it through. The check now covers every currency (see [section 5](inbox-expense-contract.md#5-expense-analyser-output)). Against all 33 messages, it keeps every ringgit receipt, and a model-reported `USD` would pass only for the exchange-rate alert, which names `USD`. A live call on the bare-`$` receipt returned `needs_review` with `currency` missing.
-- **Merchant:** a ride receipt now names the app, and the legal and regional company names are gone. Two food-delivery receipts name the app's food service instead of the app, and one still names the restaurant.
+- **Merchant:** a ride receipt now names the app, and the legal and regional company names are gone. Two food-delivery receipts name the app's food-delivery service, which the user then confirmed as the correct merchant; their labels and this table use that name. One food-delivery receipt still names the restaurant.
 - **Latency:** median 23.0 s, maximum 90.5 s. Median prompt tokens 1,293.
 
 The user's `proceed`, `revise`, or `stop` decision on `expense-v0.6` is pending.
