@@ -21,6 +21,8 @@ BODY_HEAD_LENGTH = 18_000
 BODY_TAIL_LENGTH = 6_000
 BODY_LIMIT = BODY_HEAD_LENGTH + BODY_TAIL_LENGTH
 OMISSION_MARKER = "\n\n[... content omitted by Mizu Kakeibo ...]\n\n"
+STUB_WORD_LIMIT = 20
+STUB_HTML_RATIO = 4
 
 
 class NormalizationError(ValueError):
@@ -177,6 +179,14 @@ def _leaf_text(part: dict[str, Any]) -> tuple[str, str] | None:
     return content, "text_plain"
 
 
+_LINK = re.compile(r"<?https?://\S+>?")
+
+
+def _word_count(fragments: list[tuple[str, str]]) -> int:
+    """Count words outside links, so a link-only stub is recognized as one."""
+    return sum(len(re.findall(r"\w+", _LINK.sub(" ", text))) for text, _ in fragments)
+
+
 def _extract_text(part: dict[str, Any]) -> list[tuple[str, str]]:
     mime_type = str(part.get("mime_type", "")).split(";", 1)[0].strip().lower()
     children = part.get("parts")
@@ -185,10 +195,15 @@ def _extract_text(part: dict[str, Any]) -> list[tuple[str, str]]:
         usable = [choice for choice in choices if choice]
         if not usable:
             return []
-        for choice in usable:
-            if all(kind == "text_plain" for _, kind in choice):
-                return choice
-        return usable[0]
+        plain = next((c for c in usable if all(kind == "text_plain" for _, kind in c)), None)
+        if plain is None:
+            return usable[0]
+        html = next((c for c in usable if any(kind == "html_converted" for _, kind in c)), None)
+        plain_words = _word_count(plain)
+        if html is not None and plain_words < STUB_WORD_LIMIT:
+            stub_ratio = _word_count(html) / max(plain_words, 1)
+            return html if stub_ratio >= STUB_HTML_RATIO else plain
+        return plain
     if mime_type.startswith("multipart/") and isinstance(children, list):
         result: list[tuple[str, str]] = []
         for child in children:

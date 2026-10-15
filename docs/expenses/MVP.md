@@ -37,6 +37,10 @@ Every successfully processed Gmail message ends with one decision:
 
 Version 0 focuses on clear completed expenses. Refunds, reversals, transfers, pending charges, bills, statements, and other policy-dependent cases remain review items; defining their permanent accounting treatment is deferred.
 
+A message that reports no payment by the user is not an expense and does not need review: a failed or declined payment, a cancellation, an exchange-rate or price alert, or a social or account notification. A future or recurring fee, such as the price after a trial ends, is never logged as a completed expense. A confirmation whose paid amount appears only in an attachment goes to review.
+
+The merchant is the business the user paid, named by its brand. When a delivery, ride-hailing, or other app takes the payment, the merchant is the app, not the restaurant, store, or driver.
+
 Every expense is recorded in the currency the message shows and is never converted by the analyser. For this personal inbox, an amount with no currency marker at all is assumed to be Malaysian ringgit. A symbol shared by several currencies, such as a bare `$`, does not establish the currency on its own: unless the message states the currency elsewhere, the expense goes to review. The [inbox-to-expense contract](inbox-expense-contract.md) defines these rules.
 
 Converting a foreign-currency expense to ringgit needs a real exchange rate, so it is application work rather than analyser work. It is deferred until spending totals or reporting are added. Until then, the ledger keeps each expense's original amount and currency.

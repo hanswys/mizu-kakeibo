@@ -74,11 +74,39 @@ This run used the bare-`$` receipt plus five messages with ringgit amounts or a 
 
 ## Recommendation
 
-`revise`. Before Version 0.5:
+`revise`, with four candidates:
 
 1. Stop a future or recurring fee from being reported as a completed expense when the actual charge is only in an attachment.
 2. State the merchant convention in the prompt, and decide whether merchant scoring should accept legal-form variants.
 3. Reduce unnecessary reviews for cancellation notices, failed payments, rate alerts, and social notifications.
 4. Decide whether the expense app should also prefer the HTML alternative for stub plain-text messages.
 
-The user's `proceed`, `revise`, or `stop` decision is pending.
+The user chose `revise` and asked for all four.
+
+## Revision: `expense-v0.6`, 16 messages, 1 run
+
+Changes:
+
+- The [MVP](MVP.md) and [contract](inbox-expense-contract.md#version-0-decision-scope) now state the merchant convention, which messages are `not_expense` (failed payments, cancellations, rate alerts, social and account notifications), and that a future or recurring fee is never a completed expense. The prompt states the same rules as `expense-v0.6`. Merchant scoring is unchanged.
+- The normalizer uses the HTML alternative when the plain-text alternative is a stub (see [normalization rule 2](inbox-expense-contract.md#2-normalized-inbox-message-envelope)). In this dataset that applies to exactly the two stub messages. This is shared infrastructure; see the job tracker's [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer).
+- With its HTML visible, one stub message is a direct food order with a complete receipt. It was relabelled from `needs_review` to `expense`, so this run expects 5 expenses.
+
+The run used the 12 messages the changes target (every decision error, every merchant mismatch, the bare-`$` receipt, and both stub messages) plus 4 randomly chosen others: a job alert, an expired membership, a cancellation, and an upcoming-payment notice expected as `needs_review`. One repeat was run, because every earlier run was fully consistent.
+
+| Measure | `expense-v0.4` on these 16 | `expense-v0.6` |
+| --- | --- | --- |
+| Correct decisions | 8 of 16 | 15 of 16, and 16 of 16 with the extended check below |
+| False expenses | 2 | 1, and 0 with the extended check |
+| Unnecessary reviews | 5 | 0 |
+| Missed expenses | 0 | 0 |
+| Expenses sent to review | 1 | 0 |
+| Amount, currency, and date correct | 4 of 4 | 5 of 5 |
+| Merchant correct | 0 of 4 | 2 of 5 |
+
+The `expense-v0.4` column re-scores the earlier run against the current labels; it saw the Domino's message as a stub and the bare-`$` receipt as an `MYR` expense.
+
+- **Currency:** under `expense-v0.6` the model reported the bare-`$` receipt as `USD`, a currency the message never names, so the `MYR`-only check let it through. The check now covers every currency (see [section 5](inbox-expense-contract.md#5-expense-analyser-output)). Against all 33 messages, it keeps every ringgit receipt, and a model-reported `USD` would pass only for the exchange-rate alert, which names `USD`. A live call on the bare-`$` receipt returned `needs_review` with `currency` missing.
+- **Merchant:** a ride receipt now names the app, and the legal and regional company names are gone. Two food-delivery receipts name the app's food service instead of the app, and one still names the restaurant.
+- **Latency:** median 23.0 s, maximum 90.5 s. Median prompt tokens 1,293.
+
+The user's `proceed`, `revise`, or `stop` decision on `expense-v0.6` is pending.

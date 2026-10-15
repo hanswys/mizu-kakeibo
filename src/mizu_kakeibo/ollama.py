@@ -26,23 +26,32 @@ from .models import AnalysisDecision, ExpenseAnalysisInput, ExpenseAnalysisOutpu
 
 _DOLLAR_AMOUNT = re.compile(r"\$\s?\d")
 _RINGGIT_MARKER = re.compile(r"(?<![A-Za-z])(?:RM|MYR)(?![A-Za-z])|ringgit", re.IGNORECASE)
+_CURRENCY_MARKERS = {"USD": ("US$", "US dollar"), "EUR": ("€",), "GBP": ("£",)}
+
+
+def _shows_currency(text: str, currency: str) -> bool:
+    if currency == "MYR":
+        return bool(_RINGGIT_MARKER.search(text)) or not _DOLLAR_AMOUNT.search(text)
+    if re.search(rf"(?<![A-Za-z]){currency}(?![A-Za-z])", text):
+        return True
+    folded = text.casefold()
+    return any(marker.casefold() in folded for marker in _CURRENCY_MARKERS.get(currency, ()))
 
 
 def enforce_currency_evidence(
     analyser_input: ExpenseAnalysisInput, output: ExpenseAnalysisOutput
 ) -> ExpenseAnalysisOutput:
-    """Send an MYR expense to review when the message shows only a bare `$` amount."""
+    """Send an expense to review when the message does not show the reported currency."""
     transaction = output.transaction
-    if transaction is None or transaction.currency != "MYR":
+    if transaction is None:
         return output
     message = analyser_input.message
-    text = f"{message.subject}\n{message.text}"
-    if not _DOLLAR_AMOUNT.search(text) or _RINGGIT_MARKER.search(text):
+    if _shows_currency(f"{message.subject}\n{message.text}", transaction.currency):
         return output
     return ExpenseAnalysisOutput(
         contract_version=ANALYSIS_OUTPUT_CONTRACT,
         decision=AnalysisDecision.NEEDS_REVIEW,
-        reason="Amount uses a bare $ and the message states no currency",
+        reason="The message does not state the currency of the amount",
         transaction=None,
         missing_fields=[MissingField.CURRENCY],
     )

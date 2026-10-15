@@ -81,6 +81,31 @@ def test_multipart_alternative_prefers_plain_text() -> None:
     assert result.content.source_type == "text_plain"
 
 
+def alternative(plain: str, html: str):
+    return {
+        "mime_type": "multipart/alternative",
+        "headers": [],
+        "body": {"content": None},
+        "parts": [leaf("text/plain", plain), leaf("text/html", html)],
+    }
+
+
+def test_stub_plain_text_falls_back_to_html() -> None:
+    receipt = " ".join(f"<p>Item {n} RM 1.00</p>" for n in range(10)) + "<p>Total RM 10.00</p>"
+    stub = "View in browser\n<https://mail.example.invalid/view?id=1234567890>"
+    result = normalize_gmail_message(gmail(alternative(stub, receipt)))
+    assert "Total RM 10.00" in result.content.text
+    assert result.content.source_type == "html_converted"
+
+
+def test_short_plain_text_is_kept_when_html_is_not_much_longer() -> None:
+    plain = "Paid RM 4.20 to Cafe on 6 Oct."
+    html = "<p>Paid RM 4.20 to Cafe on 6 Oct.</p><p>Thank you for your order.</p>"
+    result = normalize_gmail_message(gmail(alternative(plain, html)))
+    assert result.content.text == plain
+    assert result.content.source_type == "text_plain"
+
+
 def test_converts_html_without_hidden_or_remote_content() -> None:
     html = """
         <style>.secret { display: block }</style>

@@ -195,12 +195,31 @@ def test_myr_expense_with_ringgit_or_no_marker_is_kept(inbox_message, text) -> N
     assert result.decision.value == "expense"
 
 
-def test_bare_dollar_expense_with_explicit_currency_is_kept(inbox_message) -> None:
+@pytest.mark.parametrize(
+    "text",
+    ["Paid $42.50 USD on 2026-10-06.", "Paid US$42.50 on 2026-10-06."],
+)
+def test_foreign_currency_stated_in_the_message_is_kept(inbox_message, text) -> None:
     content = json.loads(expense_content())
     content["transaction"]["currency"] = "USD"
     analyser = OllamaAnalyser(client=client_for(content=json.dumps(content)))
 
-    result = analyser.analyse(expense_input(inbox_message, "Paid $42.50 on 2026-10-06."))
+    result = analyser.analyse(expense_input(inbox_message, text))
 
     assert result.transaction is not None
     assert result.transaction.currency == "USD"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Paid $42.50 on 2026-10-06.", "Paid 42.50 on 2026-10-06."],
+)
+def test_foreign_currency_not_stated_in_the_message_goes_to_review(inbox_message, text) -> None:
+    content = json.loads(expense_content())
+    content["transaction"]["currency"] = "USD"
+    analyser = OllamaAnalyser(client=client_for(content=json.dumps(content)))
+
+    result = analyser.analyse(expense_input(inbox_message, text))
+
+    assert result.decision.value == "needs_review"
+    assert [field.value for field in result.missing_fields] == ["currency"]
