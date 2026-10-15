@@ -89,7 +89,7 @@ Move the proven full-message analyser into a small local tool. The agent still r
 | --- | --- |
 | Runtime | Python with `pyproject.toml` |
 | Gmail retrieval | Gmail MCP controlled by the agent |
-| Expense analyser | Local Ollama with `qwen2.5:14b` and prompt `expense-v0.1` |
+| Expense analyser | Local Ollama with `qwen2.5:14b`, using the versioned prompt and runtime settings in the [contract](inbox-expense-contract.md#4-model-runtime-and-prompt) |
 | Validation | Pydantic |
 | Storage | SQLite with a unique Gmail message ID |
 | Testing | Pytest with sanitized fixtures and mocked model responses |
