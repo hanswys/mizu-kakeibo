@@ -12,7 +12,7 @@ Sampled on 2026-10-14 for J0-1 through read-only calls to the claude.ai Gmail co
 
 ### Gmail connector boundary
 
-The connector differs from the boundary recorded in the expense contract §1. That section is shared infrastructure and needs updating when the converter is built (see the [roadmap](ROADMAP.md)).
+The connector differs from the boundary first recorded in the expense contract §1. The shared adapter's handling of it is defined in the expense contract's [connector section](../expenses/inbox-expense-contract.md#claudeai-gmail-connector); the observations below are the sampling record.
 
 - Available tools: `search_threads`, `get_thread`, `get_message`. The `search_email_ids` and `read_email(format="full")` tools recorded in the expense contract were not available.
 - `get_message` with `FULL_CONTENT` returns a flat object: `id`, `threadId`, `internalDate`, `date`, `sender`, `subject`, `snippet`, `labelIds`, `plaintextBody`, `htmlBody`, `toRecipients`, `sizeEstimate`, `historyId`, `viewUrl`. It has no MIME tree and no header list, so the normalizer cannot read it.

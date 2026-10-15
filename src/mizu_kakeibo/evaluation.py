@@ -40,6 +40,7 @@ class ExpectedOutcome(ContractModel):
 class EvaluationExample(ContractModel):
     message: InboxMessage
     expected: ExpectedOutcome
+    gmail_purchases: bool | None = None
 
 
 class EvaluationDataset(ContractModel):
@@ -64,8 +65,8 @@ def load_dataset(value: Any) -> EvaluationDataset:
             raise ValueError("each evaluation example must be an object")
         examples.append(
             {
+                **example,
                 "message": parse_inbox_message(example.get("message")).model_dump(mode="json"),
-                "expected": example.get("expected"),
             }
         )
     dataset = EvaluationDataset.model_validate_json(json.dumps({**value, "examples": examples}))
@@ -207,6 +208,16 @@ def _token_summary(usages: Sequence[TokenUsage]) -> dict[str, Any] | None:
     }
 
 
+def _purchases_summary(examples: Sequence[EvaluationExample]) -> dict[str, Any] | None:
+    if all(example.gmail_purchases is None for example in examples):
+        return None
+    keys = {True: "in_purchases", False: "outside_purchases", None: "unknown"}
+    membership = {decision.value: dict.fromkeys(keys.values(), 0) for decision in AnalysisDecision}
+    for example in examples:
+        membership[example.expected.decision.value][keys[example.gmail_purchases]] += 1
+    return membership
+
+
 def _memory_summary(analyser: Analyser) -> dict[str, float] | None:
     read_memory = getattr(analyser, "loaded_model_memory", None)
     if read_memory is None:
@@ -256,6 +267,7 @@ def evaluate(
                 "index": index,
                 "message_id": example.message.source.message_id,
                 "expected_decision": example.expected.decision.value,
+                "gmail_purchases": example.gmail_purchases,
                 "observed": [o.decision or o.failure for o in observed],
                 "error_categories": categories,
             }
@@ -280,6 +292,7 @@ def evaluate(
             [o.usage for observations in run_observations for o in observations if o.usage]
         ),
         "model_memory": model_memory,
+        "purchases_membership": _purchases_summary(examples),
         "error_categories": dict(
             sorted(Counter(c for entry in per_example for c in entry["error_categories"]).items())
         ),

@@ -288,3 +288,47 @@ def test_evaluate_command_writes_private_report_and_prints_summary(
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["examples"][0]["message_id"] == "private-id"
     assert not any(tmp_path.glob("*.sqlite3"))
+
+
+def test_reports_purchases_membership_by_expected_decision(inbox_message):
+    in_purchases = example(inbox_message, "receipt", "expense")
+    in_purchases["gmail_purchases"] = True
+    bank_alert = example(inbox_message, "bank-alert", "expense")
+    bank_alert["gmail_purchases"] = False
+    newsletter = example(inbox_message, "newsletter", "not_expense")
+    newsletter["gmail_purchases"] = False
+    data = load_dataset(
+        dataset(in_purchases, bank_alert, newsletter, example(inbox_message, "x", "needs_review"))
+    )
+    analyser = ScriptedAnalyser(
+        {
+            "receipt": [output("expense")],
+            "bank-alert": [output("expense")],
+            "newsletter": [output("not_expense")],
+            "x": [output("needs_review")],
+        }
+    )
+
+    report = evaluate(data, analyser)
+
+    assert report["summary"]["purchases_membership"] == {
+        "expense": {"in_purchases": 1, "outside_purchases": 1, "unknown": 0},
+        "not_expense": {"in_purchases": 0, "outside_purchases": 1, "unknown": 0},
+        "needs_review": {"in_purchases": 0, "outside_purchases": 0, "unknown": 1},
+    }
+    assert [entry["gmail_purchases"] for entry in report["examples"]] == [True, False, False, None]
+
+
+def test_purchases_membership_is_null_when_not_recorded(inbox_message):
+    data = load_dataset(dataset(example(inbox_message, "a", "not_expense")))
+
+    summary = evaluate(data, ScriptedAnalyser({"a": [output("not_expense")]}))["summary"]
+
+    assert summary["purchases_membership"] is None
+
+
+def test_dataset_rejects_unknown_example_fields(inbox_message):
+    bad = example(inbox_message, "a", "not_expense")
+    bad["purchases"] = True
+    with pytest.raises(ValidationError):
+        load_dataset(dataset(bad))

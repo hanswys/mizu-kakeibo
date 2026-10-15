@@ -95,6 +95,23 @@ The tool contract also permits non-text body bytes in `base64_url_content`; neit
 
 The normalized schema below remains a project proposal rather than a copy of the Gmail response.
 
+### claude.ai Gmail connector
+
+The claude.ai Gmail connector, observed on 2026-10-14 during the job tracker's [layout sampling](../jobs/job-tracker-contract.md#gmail-connector-boundary), does not offer `search_email_ids` or `read_email`. Its read tools are:
+
+- `search_threads` returns threads, not messages, and a result may list only some of a thread's messages. Enumerate message IDs with `get_thread`, then pass them to `filter-new` as an ID array before retrieving any message.
+- `get_message` with `FULL_CONTENT` returns a flat object with plain-text and HTML bodies but no MIME tree or header list. The normalizer cannot read it.
+- `get_message` with `RAW` returns `id`, `threadId`, `internalDate`, `labelIds`, and `raw`, a base64url RFC 822 message. Use this format.
+
+The adapter converts a `RAW` response into the full-message shape above before normalizing it. It recognizes a `RAW` response by a string `raw` and no `payload`.
+
+- `id`, `threadId`, `internalDate`, and `labelIds` map to `id`, `thread_id`, `internal_date`, and `label_ids`. A numeric `internalDate` is converted to a string.
+- The RFC 822 message is parsed into the recursive MIME part shape, numbering parts as Gmail does. Header values are decoded from RFC 2047 encoded words.
+- A `text/plain` or `text/html` leaf that is not an attachment has its transfer encoding and charset decoded into `body.content`. An unknown charset falls back to UTF-8, and undecodable bytes are replaced.
+- Every other part, and every attachment, has null `body.content`. `base64_url_content` and `attachment_id` are always null, so attachment bytes never reach the normalizer.
+
+Normalization then proceeds unchanged. The job tracker's planned option to prefer the HTML alternative is not yet part of the adapter; see its [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer).
+
 ## 2. Normalized inbox-message envelope
 
 The Gmail adapter converts the provider-specific response into this provider-neutral envelope:
@@ -122,7 +139,7 @@ Required fields are `contract_version`, `source.provider`, `source.message_id`, 
 
 Normalization rules:
 
-1. Read supported text leaf parts from `body.content`, which the Gmail MCP returns as decoded text. Ignore text parts whose content is null; Version 0 does not decode `base64_url_content`.
+1. Read supported text leaf parts from `body.content`, which the Gmail MCP returns as decoded text and the `RAW` conversion decodes. Ignore text parts whose content is null; Version 0 does not decode `base64_url_content`.
 2. For `multipart/alternative`, prefer a non-empty `text/plain` part. Use `text/html` only when no usable plain-text alternative exists; do not concatenate duplicate alternatives.
 3. Convert selected HTML to plain text. Remove scripts, styles, templates, hidden content, and tags; decode entities and preserve meaningful paragraph, list, and table-cell boundaries. Never load remote resources.
 4. For other multipart containers, concatenate eligible text parts in MIME order. Ignore all non-text parts in Version 0.
@@ -327,7 +344,8 @@ The private dataset is one JSON object kept outside the repository:
   "prompt_version": "expense-v0.4",
   "examples": [
     {
-      "message": {"...": "inbox-message/v0 envelope or Gmail MCP full-message response"},
+      "message": {"...": "inbox-message/v0 envelope, Gmail MCP full-message response, or connector RAW response"},
+      "gmail_purchases": true,
       "expected": {
         "decision": "expense",
         "transaction": {
@@ -345,6 +363,7 @@ The private dataset is one JSON object kept outside the repository:
 - `prompt_version` records the prompt, and therefore the defaults, the ground truth was labelled against. The evaluator refuses a dataset whose `prompt_version` differs from the analyser's.
 - `expected.transaction` follows the transaction schema and is present for `expense` and null otherwise.
 - Gmail message IDs must be unique within the dataset.
+- `gmail_purchases` is optional. It records whether the message matched the Gmail query `in:inbox category:purchases` when the dataset was built; absent or null means unknown. Purchases is a search category only, not a label in `labelIds`, so membership is found by running the query over the dataset window and intersecting message IDs. Membership is evidence for the deferred Purchases gate below and is never sent to the analyser.
 
 ### Scoring rules
 
@@ -357,11 +376,14 @@ The evaluator calls the analyser directly. It writes no decision record, review 
 - A prompt that exceeds the context budget is a context overflow. Any other analyser error caused by transport failure is an operational failure, and any remaining analyser error is an invalid output. None of them counts as a decision.
 - Each example runs once per repeat. Decision consistency requires the same decision or failure on every repeat; output consistency also requires identical extracted transactions.
 - Resource usage reports latency for every call, the median and maximum prompt and generated token counts from Ollama's `prompt_eval_count` and `eval_count` for successful calls, and the loaded model's total memory and GPU share read from Ollama's `/api/ps` after the last repeat. Token and memory fields are null when the runtime does not report them. The first call's latency includes loading the model when it is not already in memory, so the maximum may reflect a cold start.
+- Purchases membership counts examples in Purchases, outside it, and unknown, grouped by expected decision. It is null when no example records membership. It depends only on the dataset, not on model output.
 
 The full report may contain Gmail message IDs and must stay private. The printed summary contains only runtime metadata, counts, latency, token and memory usage, and sanitized error categories, so it may be copied into repository evaluation notes. Neither contains model reasons or message content.
 
 ## Deferred optimizations
 
 A metadata-only relevance gate and a custom `Finance Tracker` label may be evaluated after the full-message baseline exists. Each would require its own contract and evidence that it does not hide real expenses. Neither is part of Version 0.
+
+Restricting retrieval to Gmail's Purchases category is such a gate. The V0-2 dataset records Purchases membership so its recall on expected expenses and review items can be measured on the same labelled set. Recording it does not adopt the gate; adoption is a product change that starts in the [MVP](MVP.md).
 
 Attachment analysis and product rules for refunds, reversals, transfers, pending charges, bills, statements, and other financial edge cases are also deferred. Until those capabilities are deliberately introduced, affected messages remain review items.

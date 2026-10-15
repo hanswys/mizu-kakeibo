@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 
 import pytest
@@ -10,6 +11,7 @@ from mizu_kakeibo.normalization import (
     BODY_TAIL_LENGTH,
     OMISSION_MARKER,
     NormalizationError,
+    gmail_raw_to_full_message,
     normalize_gmail_message,
 )
 
@@ -168,3 +170,106 @@ def test_falls_back_to_date_header() -> None:
 def test_invalid_dates_fail_instead_of_using_processing_time() -> None:
     with pytest.raises(NormalizationError):
         normalize_gmail_message(gmail(leaf("text/plain", "Body"), internal_date=None))
+
+
+def connector_raw(rfc822: str, **changes):
+    encoded = base64.urlsafe_b64encode(rfc822.encode("utf-8")).decode("ascii").rstrip("=")
+    value = {
+        "id": "gmail-id",
+        "threadId": "thread-id",
+        "internalDate": "1791250200000",
+        "labelIds": ["INBOX"],
+        "raw": encoded,
+    }
+    value.update(changes)
+    return value
+
+
+RAW_ALTERNATIVE = """\
+From: =?UTF-8?Q?Caf=C3=A9_Store?= <receipts@example.invalid>
+Subject: =?UTF-8?B?UmVjZWlwdCDinJM=?=
+Date: Tue, 06 Oct 2026 09:30:00 +0800
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/alternative; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Paid MYR 4.20 at Caf=C3=A9 Store.=0A=
+Thanks
+--inner
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+<p>Paid MYR 4.20 at Caf=C3=A9 Store.</p>
+--inner--
+--outer
+Content-Type: text/plain; name="receipt.txt"
+Content-Disposition: attachment; filename="receipt.txt"
+Content-Transfer-Encoding: base64
+
+QXR0YWNobWVudCB0ZXh0
+--outer--
+"""
+
+
+def test_converts_connector_raw_message_into_mime_parts() -> None:
+    full = gmail_raw_to_full_message(connector_raw(RAW_ALTERNATIVE))
+
+    assert full["id"] == "gmail-id"
+    assert full["thread_id"] == "thread-id"
+    assert full["label_ids"] == ["INBOX"]
+    assert full["internal_date"] == "1791250200000"
+    payload = full["payload"]
+    assert payload["mime_type"] == "multipart/mixed"
+    alternative, attachment = payload["parts"]
+    assert alternative["part_id"] == "0"
+    plain, html = alternative["parts"]
+    assert plain["part_id"] == "0.0"
+    assert plain["body"]["content"] == "Paid MYR 4.20 at Café Store.\nThanks"
+    assert html["mime_type"] == "text/html"
+    assert attachment["filename"] == "receipt.txt"
+    assert attachment["body"]["content"] is None
+
+
+def test_normalizes_connector_raw_message() -> None:
+    result = normalize_gmail_message(connector_raw(RAW_ALTERNATIVE))
+
+    assert result.source.message_id == "gmail-id"
+    assert result.source.thread_id == "thread-id"
+    assert result.received_at == datetime(2026, 10, 6, 1, 30, tzinfo=timezone.utc)
+    assert result.sender == "Café Store <receipts@example.invalid>"
+    assert result.subject == "Receipt ✓"
+    assert result.content.text == "Paid MYR 4.20 at Café Store.\nThanks"
+    assert result.content.source_type == "text_plain"
+
+
+def test_connector_raw_message_handles_8bit_html_and_numeric_date() -> None:
+    rfc822 = (
+        "From: Kedai <kedai@example.invalid>\n"
+        "Subject: Résumé\n"
+        "Content-Type: text/html; charset=utf-8\n"
+        "Content-Transfer-Encoding: 8bit\n"
+        "\n"
+        "<p>Jumlah RM 12.00</p><p>Terima kasih — Kedai</p>\n"
+    )
+    result = normalize_gmail_message(connector_raw(rfc822, internalDate=1791250200000))
+
+    assert result.received_at == datetime(2026, 10, 6, 1, 30, tzinfo=timezone.utc)
+    assert result.subject == "Résumé"
+    assert result.content.text == "Jumlah RM 12.00\n\nTerima kasih — Kedai"
+    assert result.content.source_type == "html_converted"
+
+
+def test_connector_raw_message_falls_back_to_date_header() -> None:
+    result = normalize_gmail_message(connector_raw(RAW_ALTERNATIVE, internalDate=None))
+    assert result.received_at == datetime(2026, 10, 6, 1, 30, tzinfo=timezone.utc)
+
+
+def test_invalid_connector_raw_message_fails() -> None:
+    with pytest.raises(NormalizationError, match="base64url"):
+        normalize_gmail_message(connector_raw("", raw="a"))
