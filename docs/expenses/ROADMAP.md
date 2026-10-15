@@ -52,7 +52,7 @@ Use Gmail MCP to collect a fixed private set of 20 to 50 representative inbox me
 
 **Type:** HITL
 
-**Status:** `in-progress` (the `evaluate` command is implemented, and the adapter now reads the claude.ai Gmail connector's `RAW` messages, pulled forward from the job tracker's [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer) as shared work. The V0-1 private set was not carried to the current machine, so the real run awaits a set rebuilt through the connector and labelled against `expense-v0.4`.)
+**Status:** `in-progress` (a 33-message private set was rebuilt through the claude.ai Gmail connector, using the `RAW` converter pulled forward from the job tracker's [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer), and evaluated on 2026-10-15; see the [evaluation note](v0-2-evaluation-2026-10-15.md). The recommendation is `revise`; the user's decision is pending.)
 
 **Blocked by:** V0-1
 
@@ -62,16 +62,16 @@ Run every example through the versioned `qwen2.5:14b` configuration on local Oll
 
 ### Acceptance criteria
 
-- [ ] Every evaluation example receives full-message analysis through the same input and output contract.
-- [ ] Model output is limited to `expense`, `not_expense`, and `needs_review`.
-- [ ] The report includes false expenses, missed expenses, correct review cases, unnecessary review cases, and per-field extraction accuracy.
-- [ ] Merchant, amount, currency, and transaction date are scored separately and as an exact complete transaction.
-- [ ] Invalid output, model failure, unsupported content, or missing required values cannot create an accepted expense.
+- [x] Every evaluation example receives full-message analysis through the same input and output contract.
+- [x] Model output is limited to `expense`, `not_expense`, and `needs_review`.
+- [x] The report includes false expenses, missed expenses, correct review cases, unnecessary review cases, and per-field extraction accuracy.
+- [x] Merchant, amount, currency, and transaction date are scored separately and as an exact complete transaction.
+- [x] Invalid output, model failure, unsupported content, or missing required values cannot create an accepted expense.
 - [ ] Policy-dependent financial events and attachment-only evidence return `needs_review`.
-- [ ] Repeated runs measure decision and extraction consistency.
-- [ ] Misclassifications are recorded as sanitized error categories without copying personal content into the repository.
-- [ ] Model, model version, analyser contract version, prompt version, and runtime settings are recorded for reproducibility.
-- [ ] The report counts expected expenses and review items inside and outside Gmail's Purchases category.
+- [x] Repeated runs measure decision and extraction consistency.
+- [x] Misclassifications are recorded as sanitized error categories without copying personal content into the repository.
+- [x] Model, model version, analyser contract version, prompt version, and runtime settings are recorded for reproducibility.
+- [x] The report counts expected expenses and review items inside and outside Gmail's Purchases category.
 - [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
 
 ## Version 0 completion gate

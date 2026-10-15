@@ -9,6 +9,7 @@ import httpx
 from pydantic import ValidationError
 
 from .constants import (
+    ANALYSIS_OUTPUT_CONTRACT,
     CONTEXT_SIZE,
     MAX_GENERATED_TOKENS,
     MODEL,
@@ -21,7 +22,30 @@ from .constants import (
     SYSTEM_PROMPT,
     TEMPERATURE,
 )
-from .models import ExpenseAnalysisInput, ExpenseAnalysisOutput
+from .models import AnalysisDecision, ExpenseAnalysisInput, ExpenseAnalysisOutput, MissingField
+
+_DOLLAR_AMOUNT = re.compile(r"\$\s?\d")
+_RINGGIT_MARKER = re.compile(r"(?<![A-Za-z])(?:RM|MYR)(?![A-Za-z])|ringgit", re.IGNORECASE)
+
+
+def enforce_currency_evidence(
+    analyser_input: ExpenseAnalysisInput, output: ExpenseAnalysisOutput
+) -> ExpenseAnalysisOutput:
+    """Send an MYR expense to review when the message shows only a bare `$` amount."""
+    transaction = output.transaction
+    if transaction is None or transaction.currency != "MYR":
+        return output
+    message = analyser_input.message
+    text = f"{message.subject}\n{message.text}"
+    if not _DOLLAR_AMOUNT.search(text) or _RINGGIT_MARKER.search(text):
+        return output
+    return ExpenseAnalysisOutput(
+        contract_version=ANALYSIS_OUTPUT_CONTRACT,
+        decision=AnalysisDecision.NEEDS_REVIEW,
+        reason="Amount uses a bare $ and the message states no currency",
+        transaction=None,
+        missing_fields=[MissingField.CURRENCY],
+    )
 
 
 class AnalysisError(RuntimeError):
@@ -193,7 +217,8 @@ class OllamaAnalyser:
             content = body["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("message.content is not a string")
-            return ExpenseAnalysisOutput.model_validate_json(content)
+            output = ExpenseAnalysisOutput.model_validate_json(content)
+            return enforce_currency_evidence(analyser_input, output)
         except (
             httpx.HTTPError,
             json.JSONDecodeError,

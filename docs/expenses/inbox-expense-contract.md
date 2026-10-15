@@ -289,6 +289,8 @@ Output invariants:
 - The analyser must not infer a missing value merely to make an expense valid, except for the documented user-provided `MYR` currency default and received-date fallback for an otherwise clear completed expense.
 - Invalid JSON or any invariant violation is not an expense and cannot create a ledger row.
 
+Application code also enforces the bare-`$` rule from [section 3](#3-expense-analyser-input), because the 2026-10-15 evaluation showed the model reporting such amounts as `MYR` despite the prompt. If a validated `expense` has currency `MYR`, and the message subject or body contains a `$` amount but no ringgit marker (`RM`, `MYR`, or `ringgit`), the output is replaced with `needs_review`, a null transaction, and `currency` missing. Any other currency the model reports is kept.
+
 Model-reported confidence is intentionally absent from Version 0. It may be added later only if evaluation shows that it is calibrated and useful for review routing.
 
 ## 6. Processing, failure, and idempotency

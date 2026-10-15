@@ -160,3 +160,47 @@ def test_call_without_a_response_clears_previous_token_usage(inbox_message) -> N
     with pytest.raises(AnalysisError):
         analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
     assert analyser.last_usage is None
+
+
+def expense_input(inbox_message, text):
+    message = inbox_message.model_copy(
+        update={"content": inbox_message.content.model_copy(update={"text": text})}
+    )
+    return ExpenseAnalysisInput.from_inbox_message(message)
+
+
+def test_bare_dollar_expense_reported_as_myr_goes_to_review(inbox_message) -> None:
+    analyser = OllamaAnalyser(client=client_for(content=expense_content()))
+
+    result = analyser.analyse(expense_input(inbox_message, "Receipt: $42.50 paid on 2026-10-06."))
+
+    assert result.decision.value == "needs_review"
+    assert result.transaction is None
+    assert [field.value for field in result.missing_fields] == ["currency"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Paid RM42.50 on 2026-10-06.",
+        "Total $42.50 (MYR) paid on 2026-10-06.",
+        "Paid 42.50 on 2026-10-06.",
+    ],
+)
+def test_myr_expense_with_ringgit_or_no_marker_is_kept(inbox_message, text) -> None:
+    analyser = OllamaAnalyser(client=client_for(content=expense_content()))
+
+    result = analyser.analyse(expense_input(inbox_message, text))
+
+    assert result.decision.value == "expense"
+
+
+def test_bare_dollar_expense_with_explicit_currency_is_kept(inbox_message) -> None:
+    content = json.loads(expense_content())
+    content["transaction"]["currency"] = "USD"
+    analyser = OllamaAnalyser(client=client_for(content=json.dumps(content)))
+
+    result = analyser.analyse(expense_input(inbox_message, "Paid $42.50 on 2026-10-06."))
+
+    assert result.transaction is not None
+    assert result.transaction.currency == "USD"
