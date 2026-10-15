@@ -109,4 +109,32 @@ The `expense-v0.4` column re-scores the earlier run against the current labels; 
 - **Merchant:** a ride receipt now names the app, and the legal and regional company names are gone. Two food-delivery receipts name the app's food-delivery service, which the user then confirmed as the correct merchant; their labels and this table use that name. One food-delivery receipt still names the restaurant.
 - **Latency:** median 23.0 s, maximum 90.5 s. Median prompt tokens 1,293.
 
-The user's `proceed`, `revise`, or `stop` decision on `expense-v0.6` is pending.
+## Full run: `expense-v0.6`, 33 messages, 1 run
+
+Final labels: 6 `expense`, 5 `needs_review`, 22 `not_expense`. During this stage the user decided that a return notice whose refund has not yet been issued is `not_expense`, so that message was relabelled from `needs_review`. Handling refunds is deferred.
+
+| Measure | Result |
+| --- | --- |
+| Correct decisions | 33 of 33 |
+| False, missed, and sent-to-review expenses | 0 |
+| Correct reviews | 5 of 5 |
+| Unnecessary and missed reviews | 0 |
+| Invalid outputs, operational failures, context overflows | 0 |
+| Amount, currency, and date correct | 6 of 6 |
+| Merchant correct | 5 of 6 |
+
+- The remaining merchant mismatch is a food-delivery receipt that names the restaurant instead of the app. The user accepted it as a review-time correction.
+- **Latency per call:** median 26.2 s, p95 95.8 s, maximum 163.3 s. Median prompt tokens 1,362, maximum 9,758.
+- A follow-up check reran the two messages affected by the relabelling, plus 5 random messages; all 7 decisions were correct.
+
+### Rejected attempt: `expense-v0.7`
+
+Before the relabelling, a prompt revision sent the return notice to review by naming returns as a policy-dependent event. On the full set it then reported a food-delivery receipt that opens with a rating request as `not_expense`, a missed expense. Small prompt changes visibly shift this model's decisions, so every prompt revision needs a full-set run before it is adopted. The revision was discarded, and `expense-v0.6` remains current.
+
+## Decision
+
+`proceed` to Version 0.5 with `expense-v0.6`, recorded on 2026-10-15. On the 33-message set it makes no false or missed expenses and no unnecessary reviews. Known limits, none blocking:
+
+- The set is small and has no bank or e-wallet alerts.
+- Merchant naming for food-delivery receipts is inconsistent.
+- Latency of about 26 s per message suits a scheduled run, not an interactive one.
