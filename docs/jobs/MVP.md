@@ -107,6 +107,7 @@ The first run processes inbox messages received on or after 2026-04-14, six mont
 - Retrieve and normalize the full message using the same Gmail adapter and `inbox-message/v0` envelope as the [expense contract](../expenses/inbox-expense-contract.md).
 - Prefer the HTML alternative over the plain-text alternative when normalizing. Some LinkedIn notifications carry the job title and status only in their HTML part. The shared adapter offers this as an option that the expense app does not use, so expense behavior is unchanged.
 - Keep its own processed-message tracking and its own private database, separate from the expense app. The two apps do not share processing state.
+- If the job tracker later reads Gmail through the Gmail API instead of an agent, it uses the expense app's read-only Google sign-in rather than its own, as the user chose on 2026-10-16. The sign-in is shared; searches and processing state are not.
 
 ### Status analyser
 

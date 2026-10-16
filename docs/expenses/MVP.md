@@ -102,6 +102,8 @@ On 2026-10-16 the user set speed and laptop load ahead of small accuracy gains: 
 
 Version 1 replaces the agent request with a daily sync that runs by itself on the user's laptop. The user chose this design on 2026-10-16 after a [scheduler spike](scheduler-spike-2026-10-16.md).
 
+- Read Gmail with read-only access through the user's own Google sign-in, kept privately on the laptop. The user chose on 2026-10-16 that the job tracker uses the same sign-in when it reads Gmail this way. A [Gmail API spike](gmail-api-spike-2026-10-16.md) showed that this finds and reads the same messages as the agent-driven sync.
+- When the Gmail sign-in has expired or been removed, stop before reading any message and tell the user to sign in again. A sign-in should last without weekly renewal.
 - Try the sync every hour from 08:00 to 23:00 Malaysia time. The day is done after a sync with no failed and no deferred messages, and later hours that day do nothing.
 - Run only while the laptop is open and fully awake. An hour missed while the laptop is closed or asleep is caught up the next time it is open within those hours, so a day with the laptop closed throughout has no sync, and the next sync picks up its messages.
 - Skip an hour when the laptop is on battery below 20%.
