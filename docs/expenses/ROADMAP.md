@@ -18,6 +18,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V0.5-2 | Connect and approve the agent-driven sync | HITL | V0.5-1 |
 | V0.5-3 | Skip promotions, social, and job alerts before analysis | AFK | V0.5-1 |
 | V0.5-4 | Switch to a lighter analyser model | AFK | V0.5-1 |
+| V0.5-5 | Correct a logged expense | AFK | V0.5-1 |
 | V1-1 | Automate new inbox processing | HITL | V0.5-2 proceed gate |
 
 # Milestone Version 0 Prove the Idea
@@ -183,9 +184,30 @@ Replace `qwen2.5:14b` on Ollama `0.23.1` with the smaller model, runtime, and `e
 - [x] The `expense-sync` server runs the new runtime.
 - [x] The next real sync completes on the new model, and the user confirms its decisions.
 
+## Issue V0.5-5 Correct a logged expense
+
+**Type:** AFK
+
+**Status:** `complete` (built on 2026-10-16 after a delivery-app receipt was logged under the restaurant's name instead of the app; the real ledger has not been corrected yet)
+
+**Blocked by:** V0.5-1
+
+### What to build
+
+Add a command that applies a [ledger correction](inbox-expense-contract.md#ledger-corrections) to an expense that is already logged, and mention it in the `expense-sync` skill beside `review-resolve`. Until now only unresolved review items could be corrected.
+
+### Acceptance criteria
+
+- [x] The merchant, amount, currency, and transaction date of a logged expense can each be corrected without changing the source email.
+- [x] The original analysis, its decision, and any review resolution are kept, and each correction is recorded.
+- [x] The transaction and its ledger row are updated in place, keeping one row per Gmail message ID.
+- [x] Repeating a correction records nothing new and leaves the ledger unchanged.
+- [x] A source with no logged expense is rejected.
+- [x] Tests cover each field, a source with no logged expense, a repeated correction, and the kept original decision, using sanitized fixtures.
+
 ## Version 0.5 completion gate
 
-Version 0.5 is complete when all four issues meet their acceptance criteria. Version 1 begins only after the real agent-driven sync records `proceed`.
+Version 0.5 was complete when V0.5-1 to V0.5-4 met their acceptance criteria. V0.5-5 was added afterwards from real use and does not block Version 1. Version 1 begins only after the real agent-driven sync records `proceed`.
 
 # Milestone Version 1 Automate Inbox Processing
 

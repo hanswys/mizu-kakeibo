@@ -101,6 +101,15 @@ uv run mizu-kakeibo review-resolve gmail MESSAGE_ID not_expense \
 For an accepted or corrected expense, add `--merchant`, `--amount-minor`,
 `--currency`, and `--transaction-date` to `review-resolve`.
 
+Correct an expense that is already logged, giving only the fields to change. The
+original analysis is kept, the correction is recorded, and the ledger row is
+rewritten:
+
+```sh
+uv run mizu-kakeibo ledger-correct gmail MESSAGE_ID --merchant "Example Delivery" \
+  --database private-kakeibo.db --ledger private-ledger.csv
+```
+
 Score the analyser against a private labelled dataset without touching the
 database or ledger. The dataset format and scoring rules are defined in the
 contract's evaluation section. The command prints a sanitized summary; `--output`

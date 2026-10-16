@@ -4,6 +4,8 @@ import base64
 import json
 from datetime import date
 
+import pytest
+
 from mizu_kakeibo import cli
 from mizu_kakeibo.constants import ANALYSIS_OUTPUT_CONTRACT
 from mizu_kakeibo.models import AnalysisDecision, ExpenseAnalysisOutput, Transaction
@@ -310,3 +312,42 @@ def test_collect_raw_fails_when_a_selected_message_was_not_fetched(tmp_path, cap
         == 1
     )
     assert json.loads(capsys.readouterr().out) == {"collected": [], "missing": ["missing-id"]}
+
+
+def test_ledger_correct_rewrites_the_ledger_row_once(tmp_path, monkeypatch, capsys) -> None:
+    source = tmp_path / "gmail.json"
+    source.write_text(json.dumps(gmail_message()), encoding="utf-8")
+    ledger = tmp_path / "ledger.csv"
+    storage = ["--database", str(tmp_path / "private.sqlite3"), "--ledger", str(ledger)]
+    monkeypatch.setattr(cli, "OllamaAnalyser", FakeOllamaAnalyser)
+    assert cli.main(["process", str(source)] + storage) == 0
+    capsys.readouterr()
+
+    correct = ["ledger-correct", "gmail", "message-1", "--merchant", "Example Delivery"]
+    correct += ["--transaction-date", "2026-10-05"]
+    previous = {
+        "merchant": "Example Store",
+        "amount_minor": 4250,
+        "currency": "MYR",
+        "transaction_date": "2026-10-06",
+    }
+    corrected = {**previous, "merchant": "Example Delivery", "transaction_date": "2026-10-05"}
+    assert cli.main(correct + storage) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "provider": "gmail",
+        "message_id": "message-1",
+        "status": "corrected",
+        "previous": previous,
+        "transaction": corrected,
+    }
+    assert cli.main(correct + storage) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "unchanged"
+    assert ledger.read_text(encoding="utf-8").splitlines() == [
+        "source_provider,gmail_message_id,merchant,amount_minor,currency,transaction_date",
+        "gmail,message-1,Example Delivery,4250,MYR,2026-10-05",
+    ]
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["ledger-correct", "gmail", "message-2", "--merchant", "Example"] + storage)
+    assert exit_info.value.code == 2
+    assert "no logged expense" in capsys.readouterr().err
