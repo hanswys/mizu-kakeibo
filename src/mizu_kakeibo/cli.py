@@ -17,7 +17,7 @@ from .normalization import NormalizationError, normalize_gmail_message, parse_in
 from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingStatus
 from .selection import search_query, select_new_messages
-from .storage import ReviewResolutionError, Store
+from .storage import LedgerCorrectionError, ReviewResolutionError, Store
 from .transcript import collect_raw_messages, connector_message_metadata, current_session_transcript
 
 
@@ -232,6 +232,30 @@ def command_review_resolve(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_ledger_correct(args: argparse.Namespace) -> int:
+    correction = _store(args).correct_transaction(
+        args.provider,
+        args.message_id,
+        merchant=args.merchant,
+        amount_minor=args.amount_minor,
+        currency=args.currency,
+        transaction_date=date.fromisoformat(args.transaction_date)
+        if args.transaction_date
+        else None,
+    )
+    _write_json(
+        {
+            "provider": args.provider,
+            "message_id": args.message_id,
+            "status": "corrected" if correction.changed else "unchanged",
+            "previous": correction.previous.model_dump(mode="json"),
+            "transaction": correction.corrected.model_dump(mode="json"),
+        },
+        None,
+    )
+    return 0
+
+
 def _add_storage_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--database", type=Path, default=Path("mizu-kakeibo.sqlite3"))
     parser.add_argument("--ledger", type=Path, default=Path("mizu-kakeibo-ledger.csv"))
@@ -318,6 +342,18 @@ def build_parser() -> argparse.ArgumentParser:
     resolve.add_argument("--transaction-date")
     _add_storage_options(resolve)
     resolve.set_defaults(handler=command_review_resolve)
+
+    correct = subparsers.add_parser(
+        "ledger-correct", help="correct the values of one logged expense"
+    )
+    correct.add_argument("provider", choices=["gmail"])
+    correct.add_argument("message_id")
+    correct.add_argument("--merchant")
+    correct.add_argument("--amount-minor", type=int)
+    correct.add_argument("--currency")
+    correct.add_argument("--transaction-date")
+    _add_storage_options(correct)
+    correct.set_defaults(handler=command_ledger_correct)
     return parser
 
 
@@ -330,6 +366,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         AnalysisError,
         FileNotFoundError,
         json.JSONDecodeError,
+        LedgerCorrectionError,
         NormalizationError,
         ReviewResolutionError,
         ValidationError,

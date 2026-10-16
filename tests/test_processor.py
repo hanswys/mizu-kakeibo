@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 
 import pytest
+from pydantic import ValidationError
 
 from mizu_kakeibo.constants import ANALYSIS_OUTPUT_CONTRACT
 from mizu_kakeibo.models import (
@@ -19,7 +20,7 @@ from mizu_kakeibo.models import (
 )
 from mizu_kakeibo.ollama import AnalysisError, ContextOverflowError, RuntimeMetadata
 from mizu_kakeibo.processor import InboxProcessor, ProcessingStatus
-from mizu_kakeibo.storage import ReviewResolutionError, Store
+from mizu_kakeibo.storage import LedgerCorrectionError, ReviewResolutionError, Store
 
 METADATA = RuntimeMetadata(
     runtime="ollama",
@@ -269,3 +270,164 @@ def test_private_content_is_removed_from_persisted_reason(store, inbox_message) 
     assert "private@example.invalid" not in reason
     assert "1234 5678" not in reason
     assert "Example Store" not in reason
+
+
+def ledger_row(**changes):
+    row = {
+        "source_provider": "gmail",
+        "gmail_message_id": "message-1",
+        "merchant": "Example Store",
+        "amount_minor": "4250",
+        "currency": "MYR",
+        "transaction_date": "2026-10-06",
+    }
+    return {**row, **changes}
+
+
+def stored_corrections(store):
+    with sqlite3.connect(store.database_path) as connection:
+        return connection.execute(
+            "SELECT merchant, amount_minor, currency, transaction_date FROM corrections"
+        ).fetchall()
+
+
+@pytest.mark.parametrize(
+    ("change", "expected"),
+    [
+        ({"merchant": "Example Delivery"}, {"merchant": "Example Delivery"}),
+        ({"amount_minor": 3990}, {"amount_minor": "3990"}),
+        ({"currency": "USD"}, {"currency": "USD"}),
+        ({"transaction_date": date(2026, 10, 5)}, {"transaction_date": "2026-10-05"}),
+    ],
+)
+def test_correction_changes_only_the_named_field(store, inbox_message, change, expected) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+
+    correction = store.correct_transaction("gmail", "message-1", **change)
+
+    assert correction.changed is True
+    assert correction.previous == expense_output().transaction
+    assert read_ledger(store) == [ledger_row(**expected)]
+    corrected = expense_output().transaction.model_copy(update=change)
+    assert correction.corrected == corrected
+    assert stored_corrections(store) == [
+        (
+            corrected.merchant,
+            corrected.amount_minor,
+            corrected.currency,
+            corrected.transaction_date.isoformat(),
+        )
+    ]
+
+
+def test_correction_keeps_the_original_analysis(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+    store.correct_transaction("gmail", "message-1", merchant="Example Delivery")
+
+    assert store.is_processed("gmail", "message-1") is True
+    with sqlite3.connect(store.database_path) as connection:
+        assert connection.execute(
+            "SELECT decision, merchant, amount_minor, active FROM analyses"
+        ).fetchall() == [("expense", "Example Store", 4250, 1)]
+        corrected_analysis, active_analysis = connection.execute(
+            "SELECT c.analysis_id, t.analysis_id FROM corrections c, transactions t"
+        ).fetchone()
+        assert corrected_analysis == active_analysis
+
+
+def test_correction_keeps_the_original_review_decision(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(review_output())).process_one(inbox_message)
+    store.resolve_review(
+        "gmail", "message-1", AnalysisDecision.EXPENSE, expense_output().transaction
+    )
+
+    store.correct_transaction("gmail", "message-1", amount_minor=1999)
+
+    assert read_ledger(store) == [ledger_row(amount_minor="1999")]
+    assert store.list_review_items() == []
+    with sqlite3.connect(store.database_path) as connection:
+        assert connection.execute(
+            "SELECT a.decision, r.decision, r.amount_minor FROM analyses a "
+            "JOIN resolutions r ON r.analysis_id = a.id"
+        ).fetchall() == [("needs_review", "expense", 4250)]
+
+
+def test_repeated_correction_records_nothing_new(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+    store.correct_transaction("gmail", "message-1", merchant="Example Delivery")
+
+    repeat = store.correct_transaction("gmail", "message-1", merchant="Example Delivery")
+
+    assert repeat.changed is False
+    assert repeat.corrected.merchant == "Example Delivery"
+    assert read_ledger(store) == [ledger_row(merchant="Example Delivery")]
+    assert len(stored_corrections(store)) == 1
+
+
+def test_later_correction_takes_effect(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+    store.correct_transaction("gmail", "message-1", merchant="Example Delivery")
+    store.correct_transaction("gmail", "message-1", amount_minor=500)
+
+    assert read_ledger(store) == [ledger_row(merchant="Example Delivery", amount_minor="500")]
+    assert stored_corrections(store) == [
+        ("Example Delivery", 4250, "MYR", "2026-10-06"),
+        ("Example Delivery", 500, "MYR", "2026-10-06"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        None,
+        review_output(),
+        ExpenseAnalysisOutput(
+            contract_version=ANALYSIS_OUTPUT_CONTRACT,
+            decision=AnalysisDecision.NOT_EXPENSE,
+            reason="Message does not report a completed expense",
+            transaction=None,
+            missing_fields=[],
+        ),
+    ],
+    ids=["unknown", "needs_review", "not_expense"],
+)
+def test_source_without_logged_expense_cannot_be_corrected(store, inbox_message, output) -> None:
+    if output is not None:
+        InboxProcessor(store, FakeAnalyser(output)).process_one(inbox_message)
+
+    with pytest.raises(LedgerCorrectionError, match="no logged expense"):
+        store.correct_transaction("gmail", "message-1", merchant="Example Delivery")
+
+    assert read_ledger(store) == []
+    assert stored_corrections(store) == []
+
+
+@pytest.mark.parametrize(
+    ("change", "error"),
+    [
+        ({}, LedgerCorrectionError),
+        ({"currency": "usd"}, ValidationError),
+        ({"amount_minor": 0}, ValidationError),
+        ({"merchant": " "}, ValidationError),
+    ],
+)
+def test_invalid_correction_changes_nothing(store, inbox_message, change, error) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+
+    with pytest.raises(error):
+        store.correct_transaction("gmail", "message-1", **change)
+
+    assert read_ledger(store) == [ledger_row()]
+    assert stored_corrections(store) == []
+
+
+def test_reevaluation_replaces_corrected_values(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+    store.correct_transaction("gmail", "message-1", merchant="Example Delivery")
+
+    InboxProcessor(store, FakeAnalyser(expense_output(9900))).process_one(
+        inbox_message, reevaluate=True
+    )
+
+    assert read_ledger(store) == [ledger_row(amount_minor="9900")]
+    assert len(stored_corrections(store)) == 1

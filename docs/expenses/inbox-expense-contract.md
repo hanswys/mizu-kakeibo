@@ -359,6 +359,17 @@ Only `expense` appends a private CSV ledger row. That row contains the source pr
 
 `needs_review` creates a review item linked to the same source. `not_expense` creates neither a transaction nor a review item.
 
+### Ledger corrections
+
+The user may correct the merchant, amount in minor units, currency, or transaction date of any logged expense, whether it came from an `expense` analysis or a resolved review item. A source without a transaction has nothing to correct and is rejected.
+
+- A correction changes only the named fields. The corrected transaction must satisfy the same field rules as an analyser expense in [section 5](#5-expense-analyser-output).
+- The analysis and any review resolution are never modified, so the original decision and extracted values remain recorded.
+- Each correction appends a record linked to the active analysis, holding the complete corrected values and a timestamp. The latest correction is the one in effect.
+- The transaction is updated in place under the same source reference, and the CSV ledger is rewritten from the transactions, so the Gmail message ID keeps exactly one row.
+- A correction that leaves every value unchanged, including a repeated run of the same correction, records nothing and reports the source as unchanged.
+- An explicit re-evaluation replaces the transaction with the new analysis's values. Earlier corrections stay recorded against the analysis they corrected and are not carried forward.
+
 The review list links each Gmail item to its message as `https://mail.google.com/mail/#all/thread-f:<thread>|msg-f:<message>`, where `<thread>` and `<message>` are the decimal values of the hexadecimal Gmail thread and message IDs, matching the connector's `viewUrl`. Without an `authuser` parameter, Gmail opens the browser's default signed-in account.
 
 Raw message bodies, credentials, model inputs, private evaluation examples, ledgers, and local databases remain outside version control and ordinary application logs.

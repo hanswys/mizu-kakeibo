@@ -9,7 +9,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .models import AnalysisDecision, ExpenseAnalysisOutput, InboxMessage, Transaction
@@ -24,6 +24,10 @@ class ReviewResolutionError(ValueError):
     pass
 
 
+class LedgerCorrectionError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class ReviewItem:
     provider: str
@@ -33,6 +37,16 @@ class ReviewItem:
     reason: str
     missing_fields: list[str]
     created_at: str
+
+
+@dataclass(frozen=True)
+class LedgerCorrection:
+    previous: Transaction
+    corrected: Transaction
+
+    @property
+    def changed(self) -> bool:
+        return self.previous != self.corrected
 
 
 SCHEMA = """
@@ -98,6 +112,17 @@ CREATE TABLE IF NOT EXISTS transactions (
     currency TEXT NOT NULL,
     transaction_date TEXT NOT NULL,
     PRIMARY KEY (provider, message_id),
+    FOREIGN KEY (analysis_id) REFERENCES analyses(id)
+);
+
+CREATE TABLE IF NOT EXISTS corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    analysis_id INTEGER NOT NULL,
+    merchant TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+    currency TEXT NOT NULL,
+    transaction_date TEXT NOT NULL,
+    corrected_at TEXT NOT NULL,
     FOREIGN KEY (analysis_id) REFERENCES analyses(id)
 );
 """
@@ -349,6 +374,79 @@ class Store:
                     connection, provider, message_id, analysis["id"], transaction
                 )
         self.export_ledger()
+
+    def correct_transaction(
+        self,
+        provider: str,
+        message_id: str,
+        *,
+        merchant: str | None = None,
+        amount_minor: int | None = None,
+        currency: str | None = None,
+        transaction_date: date | None = None,
+    ) -> LedgerCorrection:
+        """Correct a logged expense, keeping its analysis and any review resolution."""
+        changes = {
+            key: value
+            for key, value in {
+                "merchant": merchant,
+                "amount_minor": amount_minor,
+                "currency": currency,
+                "transaction_date": transaction_date,
+            }.items()
+            if value is not None
+        }
+        if not changes:
+            raise LedgerCorrectionError("a correction must name at least one field")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT analysis_id, merchant, amount_minor, currency, transaction_date "
+                "FROM transactions WHERE provider = ? AND message_id = ?",
+                (provider, message_id),
+            ).fetchone()
+            if row is None:
+                raise LedgerCorrectionError("no logged expense for this source")
+            previous = Transaction(
+                merchant=row["merchant"],
+                amount_minor=row["amount_minor"],
+                currency=row["currency"],
+                transaction_date=date.fromisoformat(row["transaction_date"]),
+            )
+            corrected = Transaction(**{**previous.model_dump(), **changes})
+            correction = LedgerCorrection(previous=previous, corrected=corrected)
+            if not correction.changed:
+                return correction
+            connection.execute(
+                """
+                INSERT INTO corrections(
+                    analysis_id, merchant, amount_minor, currency, transaction_date,
+                    corrected_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["analysis_id"],
+                    corrected.merchant,
+                    corrected.amount_minor,
+                    corrected.currency,
+                    corrected.transaction_date.isoformat(),
+                    _utc_now(),
+                ),
+            )
+            connection.execute(
+                "UPDATE transactions SET merchant = ?, amount_minor = ?, currency = ?, "
+                "transaction_date = ? WHERE provider = ? AND message_id = ?",
+                (
+                    corrected.merchant,
+                    corrected.amount_minor,
+                    corrected.currency,
+                    corrected.transaction_date.isoformat(),
+                    provider,
+                    message_id,
+                ),
+            )
+        self.export_ledger()
+        return correction
 
     def export_ledger(self) -> None:
         lock_path = self.ledger_path.with_name(f".{self.ledger_path.name}.lock")
