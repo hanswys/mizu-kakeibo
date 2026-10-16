@@ -124,7 +124,7 @@ Create one command that accepts a batch of normalized full Gmail messages from t
 
 **Type:** HITL
 
-**Status:** `in-progress` (the [connector sync](inbox-expense-contract.md#connector-sync) and the `expense-sync` skill are built; a 10-message trial on 2026-10-15 processed every message, skipped all of them on an immediate replay without model calls, and opened its Gmail link correctly. The trial found 466 inbox messages since 2026-10-01, so the user moved the start to 2026-10-10, which leaves about 140. The full sync with the user is next.)
+**Status:** `in-progress` (the [connector sync](inbox-expense-contract.md#connector-sync) and the `expense-sync` skill are built; a 10-message trial on 2026-10-15 processed every message, skipped all of them on an immediate replay without model calls, and opened its Gmail link correctly. The trial found 466 inbox messages since 2026-10-01, so the user moved the start to 2026-10-10, which leaves about 140. The first full sync, on 2026-10-15, processed a 25-message batch at about a minute per message: one expense, 23 non-expenses, and one context overflow, with 93 deferred. Over-budget messages now go to review instead of failing on every sync. The remaining syncs, a real review resolved beside its Gmail message, and the decision are next.)
 
 **Blocked by:** V0.5-1
 

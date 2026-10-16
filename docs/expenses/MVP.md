@@ -73,6 +73,7 @@ The authoritative field definitions and invariants live in the [inbox-to-expense
 - Return only `expense`, `not_expense`, or `needs_review`.
 - Extract merchant, integer minor-unit amount, currency, and transaction date only for a confirmed expense.
 - Return `needs_review` when the decision is uncertain, required values are missing, or necessary content cannot be interpreted safely.
+- Send a message that is too long for the analyser to read in full to review, rather than leaving it to fail on every sync.
 - Produce structured output that can be validated before anything is persisted.
 - Follow the versioned model, prompt, and runtime configuration in the inbox-to-expense contract.
 
@@ -94,6 +95,13 @@ The authoritative field definitions and invariants live in the [inbox-to-expense
 No payment-application integration is required when the application sends receipts or transaction notifications into Gmail. Those messages enter the inbox-wide workflow even when the sender is unknown and no Gmail filter exists.
 
 Applications that send no email are outside the MVP and may require direct integrations later.
+
+## Deferred improvements
+
+These improvements wait until the MVP is complete:
+
+- **Oversized messages.** Analyse a message that is too long for the analyser instead of sending it to review.
+- **Sync performance.** Make each sync faster and lighter. The first real sync, on 2026-10-15, took about a minute per message, and most of the messages it analysed were job alerts and promotions.
 
 ## Out of scope
 

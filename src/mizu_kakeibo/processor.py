@@ -7,9 +7,25 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
-from .models import ExpenseAnalysisInput, ExpenseAnalysisOutput, InboxMessage
-from .ollama import AnalysisError, RuntimeMetadata
+from .constants import ANALYSIS_OUTPUT_CONTRACT
+from .models import (
+    AnalysisDecision,
+    ExpenseAnalysisInput,
+    ExpenseAnalysisOutput,
+    InboxMessage,
+    MissingField,
+)
+from .ollama import AnalysisError, ContextOverflowError, RuntimeMetadata
 from .storage import AlreadyProcessedError, Store
+
+# An over-budget prompt has no trustworthy model output, so the message goes to review.
+_OVERSIZED_REVIEW = ExpenseAnalysisOutput(
+    contract_version=ANALYSIS_OUTPUT_CONTRACT,
+    decision=AnalysisDecision.NEEDS_REVIEW,
+    reason="Message is too long for the analyser context",
+    transaction=None,
+    missing_fields=[MissingField.MESSAGE_CONTENT],
+)
 
 
 class Analyser(Protocol):
@@ -45,11 +61,14 @@ class InboxProcessor:
             return ProcessingResult(provider, message_id, ProcessingStatus.SKIPPED)
         try:
             analyser_input = ExpenseAnalysisInput.from_inbox_message(message)
-            output = self.analyser.analyse(analyser_input)
+            try:
+                output = self.analyser.analyse(analyser_input)
+                persisted_output = output.model_copy(
+                    update={"reason": _sanitized_reason(output, message)}
+                )
+            except ContextOverflowError:
+                output = persisted_output = _OVERSIZED_REVIEW
             metadata = self.analyser.verify_runtime()
-            persisted_output = output.model_copy(
-                update={"reason": _sanitized_reason(output, message)}
-            )
             self.store.save_analysis(message, persisted_output, metadata, reevaluate=reevaluate)
             return ProcessingResult(
                 provider,

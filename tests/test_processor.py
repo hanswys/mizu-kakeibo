@@ -17,7 +17,7 @@ from mizu_kakeibo.models import (
     MissingField,
     Transaction,
 )
-from mizu_kakeibo.ollama import AnalysisError, RuntimeMetadata
+from mizu_kakeibo.ollama import AnalysisError, ContextOverflowError, RuntimeMetadata
 from mizu_kakeibo.processor import InboxProcessor, ProcessingStatus
 from mizu_kakeibo.storage import ReviewResolutionError, Store
 
@@ -220,6 +220,20 @@ def test_model_failure_remains_retryable(store, inbox_message) -> None:
 
     retry = InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
     assert retry.status is ProcessingStatus.PROCESSED
+
+
+def test_context_overflow_goes_to_review(store, inbox_message) -> None:
+    overflow = ContextOverflowError("prompt exceeded the analyser context budget")
+    result = InboxProcessor(store, FakeAnalyser(error=overflow)).process_one(inbox_message)
+
+    assert result.status is ProcessingStatus.PROCESSED
+    assert result.decision == "needs_review"
+    assert store.is_processed("gmail", "message-1") is True
+    items = store.list_review_items()
+    assert len(items) == 1
+    assert items[0].missing_fields == ["message_content"]
+    assert items[0].reason == "Message is too long for the analyser context"
+    assert read_ledger(store) == []
 
 
 def test_not_expense_creates_no_transaction_or_review(store, inbox_message) -> None:
