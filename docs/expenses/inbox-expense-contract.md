@@ -344,6 +344,18 @@ The Gmail message ID is the idempotency key.
 
 `expense`, `not_expense`, and `needs_review` are business decisions. Connector errors, model timeouts, and malformed outputs are operational failures, not a fourth decision. A failed item remains retryable and is not marked as successfully processed.
 
+### Run lock
+
+A sync, `process`, and an explicit re-evaluation first take an exclusive `flock` on a lock file beside the database, named `<database>.lock`, without waiting. When another process holds it, the command records nothing, reports that another run is in progress, and exits successfully. The file holds the holder's process ID and start time for diagnosis only. The operating system releases the lock when the holder exits, so a crashed run leaves no stale lock. The persistence-time check above remains as a second guard.
+
+Review resolution and ledger correction do not take the lock. Each is one SQLite transaction on a single source, so it stays correct beside a running sync and need not wait for one.
+
+Without the lock, the [scheduler spike](scheduler-spike-2026-10-16.md) found that overlapping runs never stored a message twice, but both analysed most of the same messages, overlapping re-evaluations each added a revision, and two runs creating a new database at the same moment could fail with `database is locked`.
+
+### Repeated failures
+
+When a message's own analysis fails, because the analyser times out or returns invalid output for it, the failure is counted against its Gmail message ID without marking it processed. On the third counted failure, the message is stored as `needs_review` with the reason `Analysis failed repeatedly` and missing field `message_content`, as an oversized message is, so later syncs skip it and the user resolves it in review. A failure that is not the message's own is not counted: the runtime being unreachable or at the wrong version, or a Gmail retrieval error.
+
 ## 7. Persistence contract
 
 Every successful analysis creates one private decision record containing:
@@ -434,6 +446,21 @@ The evaluator calls the analyser directly. It writes no decision record, review 
 - Purchases membership counts examples in Purchases, outside it, and unknown, grouped by expected decision. It is null when no example records membership. It depends only on the dataset, not on model output.
 
 The full report may contain Gmail message IDs and must stay private. The printed summary contains only runtime metadata, counts, latency, token and memory usage, and sanitized error categories, so it may be copied into repository evaluation notes. Neither contains model reasons or message content.
+
+## 9. Scheduled run
+
+Version 1 runs the [scheduled sync](MVP.md#scheduled-sync) on the user's macOS laptop. This section covers how a run starts and reports; retrieval through the Gmail API is defined separately.
+
+- **Trigger.** A user LaunchAgent fires at minute 0 of each hour from 08:00 to 23:00 through `StartCalendarInterval`, with no `RunAtLoad` or `KeepAlive` and `ProcessType` `Background`. It uses absolute paths, because launchd provides only `/usr/bin:/bin:/usr/sbin:/sbin`. launchd runs hours missed during sleep once, at the next wake, and never starts a second instance of a running job.
+- **Gates.** After taking the [run lock](#run-lock), a run checks these in order. The first that fails ends the run successfully, with its reason recorded and no notification.
+  1. Done today: a scheduled run already completed today, in Malaysia time, with no failed and no deferred messages.
+  2. Full wake: the lid is open, so `AppleClamshellState` is `No`, and `pmset -g systemstate` lists `Graphics`. A missed hour usually fires in a lid-closed maintenance wake of about ten seconds, which would freeze a sync partway.
+  3. Power: on battery, the charge is at least 20%.
+- **Runtime check.** `/api/version` must report the pinned Ollama version before any message is retrieved. If the server does not answer, the run starts it with `launchctl kickstart` when its LaunchAgent is loaded, or `launchctl bootstrap` otherwise, and waits up to 30 seconds. A missing or wrong version fails the run.
+- **Staying awake.** The run holds `caffeinate -i` for its own process, so idle sleep does not interrupt it. Closing the lid still sleeps the laptop: the run resumes on wake, and anything that failed is retried in a later hour.
+- **Run record.** A run that passes the gates writes `run.json` in its own directory under `~/mizu-kakeibo-private/live/runs/`. It holds the trigger, start and end times, wake state, runtime version, the seven [`process` groups](#connector-sync) as message IDs, sanitized errors, and whether the day is done. Every run, including one stopped by the lock or a gate, appends one line to `~/mizu-kakeibo-private/live/scheduled.log`. A run first deletes run directories and log lines older than 90 days. Neither file holds message content.
+- **Notification.** After a run that processed or failed any message, `osascript` shows a notification with the counts of expenses, review items, and failures. macOS attributes it to Script Editor, and an active Focus may hold it in Notification Center. When there are review items or failures, `osascript` also shows a dialog with `Dismiss` and `Open review list` buttons, which gives up after an hour and is shown after the lock is released, so it never blocks the next run. A run that fails before processing any message shows its dialog at most once a day.
+- **Review page.** After each sync and each review resolution, the unresolved review items from `review-list` are written to the private page `~/mizu-kakeibo-private/live/review.html`, with each item's reason, missing fields, and Gmail link. `Open review list` opens it in the default browser.
 
 ## Deferred optimizations
 

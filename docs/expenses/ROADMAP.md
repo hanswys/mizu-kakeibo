@@ -20,6 +20,9 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V0.5-4 | Switch to a lighter analyser model | AFK | V0.5-1 |
 | V0.5-5 | Correct a logged expense | AFK | V0.5-1 |
 | V1-1 | Automate new inbox processing | HITL | V0.5-2 proceed gate |
+| V1-2 | Lock processing runs and stop retrying failing messages | AFK | None |
+| V1-3 | Schedule the daily sync on the laptop | HITL | V1-1, V1-2 |
+| V1-4 | Report each scheduled sync and open the review list | AFK | V1-3 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -225,21 +228,79 @@ Remove the need for an interactive agent request. A scheduled personal service r
 
 ### What to build
 
-Add read-only Gmail authentication and scheduled polling for new inbox messages. The automated service reuses the Version 0.5 workflow unchanged: it skips processed IDs, retrieves every new message in full, analyses it, logs accepted transactions, and preserves uncertain cases for review.
+Add read-only Gmail authentication and retrieval of new inbox messages, so a sync needs no interactive agent request. [V1-3](#issue-v1-3-schedule-the-daily-sync-on-the-laptop) runs it on a schedule. The automated path reuses the Version 0.5 workflow unchanged: it skips processed IDs, retrieves every new message in full, analyses it, logs accepted transactions, and preserves uncertain cases for review.
 
 ### Acceptance criteria
 
 - [ ] Gmail access uses the minimum read-only scope needed to retrieve inbox messages and their full content.
 - [ ] OAuth credentials and tokens are stored outside the repository.
-- [ ] A scheduled run retrieves and analyses new inbox messages.
+- [ ] One command retrieves and analyses new inbox messages without an agent.
 - [ ] The automated path produces the same decisions and ledger records as the local batch command.
-- [ ] Repeated or overlapping runs cannot process the same Gmail message ID twice.
-- [ ] Failures are visible and retryable without duplicating successful work.
 - [ ] A human verifies an expense, a non-expense, a review item, and the extracted transaction values.
+
+## Issue V1-2 Lock processing runs and stop retrying failing messages
+
+**Type:** AFK
+
+**Status:** `needs-triage` (designed on 2026-10-16 from the [scheduler spike](scheduler-spike-2026-10-16.md))
+
+**Blocked by:** None - can start immediately
+
+### What to build
+
+Add the [run lock](inbox-expense-contract.md#run-lock) to every processing command and the agent-driven sync, and send a message to review after [repeated failures](inbox-expense-contract.md#repeated-failures).
+
+### Acceptance criteria
+
+- [ ] A sync, `process`, or re-evaluation that finds the lock held records nothing and exits successfully.
+- [ ] A run killed while holding the lock leaves nothing that blocks the next run.
+- [ ] Review resolution and ledger correction work while a sync holds the lock.
+- [ ] A message's third counted failure stores it as `needs_review`; failures that are not the message's own are not counted.
+- [ ] Tests cover overlapping runs in separate processes, a new database opened by two runs, and each failure kind.
+
+## Issue V1-3 Schedule the daily sync on the laptop
+
+**Type:** HITL
+
+**Status:** `needs-triage`
+
+**Blocked by:** V1-1, V1-2
+
+### What to build
+
+Install a LaunchAgent that runs the V1-1 sync every hour within the [scheduled run](inbox-expense-contract.md#9-scheduled-run) window, behind its gates and runtime check, and writes its run record and log.
+
+### Acceptance criteria
+
+- [ ] A run stopped by the lock or a gate records its reason and exits successfully.
+- [ ] A run in a maintenance wake or with the lid closed does not sync, and the next full wake within the window does.
+- [ ] A run starts Ollama when it is down and fails before retrieval when the version is wrong.
+- [ ] A failed or deferred day is continued in the next hour, and a done day is not run again.
+- [ ] Run records and log lines hold no message content and are deleted after 90 days.
+- [ ] The user installs the LaunchAgent, and its scheduled syncs run on real inbox messages for a week.
+
+## Issue V1-4 Report each scheduled sync and open the review list
+
+**Type:** AFK
+
+**Status:** `needs-triage`
+
+**Blocked by:** V1-3
+
+### What to build
+
+Show the [notification and dialog](inbox-expense-contract.md#9-scheduled-run) after a scheduled sync, and keep the private review page current.
+
+### Acceptance criteria
+
+- [ ] A sync that processed or failed a message notifies its counts; a sync with nothing new is silent.
+- [ ] Review items or failures also show a dialog whose `Open review list` button opens the review page.
+- [ ] The dialog never holds the run lock, and a run that fails before processing shows it at most once a day.
+- [ ] The review page is rewritten after each sync and each review resolution.
 
 ## Version 1 completion gate
 
-Version 1 is complete when scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request.
+Version 1 is complete when V1-1 to V1-4 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request.
 
 ## Scope changes
 

@@ -98,6 +98,19 @@ On 2026-10-16 the user set speed and laptop load ahead of small accuracy gains: 
 - Allow the user to accept an expense, mark it as not an expense, or correct extracted values.
 - Preserve the Gmail message ID and the original decision after correction.
 
+### Scheduled sync
+
+Version 1 replaces the agent request with a daily sync that runs by itself on the user's laptop. The user chose this design on 2026-10-16 after a [scheduler spike](scheduler-spike-2026-10-16.md).
+
+- Try the sync every hour from 08:00 to 23:00 Malaysia time. The day is done after a sync with no failed and no deferred messages, and later hours that day do nothing.
+- Run only while the laptop is open and fully awake. An hour missed while the laptop is closed or asleep is caught up the next time it is open within those hours, so a day with the laptop closed throughout has no sync, and the next sync picks up its messages.
+- Skip an hour when the laptop is on battery below 20%.
+- Never run two syncs at once. A sync that finds another one running, scheduled or started from chat, exits without doing anything.
+- Send a message to review after its analysis fails in three syncs, instead of retrying it forever.
+- After a sync that processed or failed any message, show a notification with the counts of expenses, review items, and failures. When there are review items or failures, also show a dialog with an "Open review list" button, which opens a private page listing each review item with its Gmail link. A sync with nothing new stays silent.
+- Keep a private record of each sync's message IDs, counts, and errors for 90 days, never message content.
+- Keep the agent-driven sync as a manual fallback.
+
 ## External payment applications
 
 No payment-application integration is required when the application sends receipts or transaction notifications into Gmail. Those messages enter the inbox-wide workflow even when the sender is unknown and no Gmail filter exists.
