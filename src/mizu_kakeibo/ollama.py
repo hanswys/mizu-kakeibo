@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from .constants import (
     ANALYSIS_OUTPUT_CONTRACT,
     CONTEXT_SIZE,
+    KEEP_ALIVE,
     MAX_GENERATED_TOKENS,
     MODEL,
     MODEL_DIGEST,
@@ -127,9 +128,6 @@ class OllamaAnalyser:
             tags_response = self._client.get("/api/tags")
             tags_response.raise_for_status()
             models = tags_response.json().get("models", [])
-            show_response = self._client.post("/api/show", json={"model": MODEL})
-            show_response.raise_for_status()
-            model_details = show_response.json()
         except (httpx.HTTPError, json.JSONDecodeError, AttributeError, TypeError) as error:
             raise AnalysisError(f"cannot verify Ollama runtime: {error}") from error
 
@@ -147,16 +145,10 @@ class OllamaAnalyser:
         )
         if installed is None:
             raise AnalysisError(f"required model is not installed: {MODEL}")
-        if not isinstance(model_details, dict):
-            raise AnalysisError(f"cannot inspect required model: {MODEL}")
-        modelfile = model_details.get("modelfile")
-        digest_match = (
-            re.search(r"(?m)^FROM (?:.*[/\\])?sha256[-:]([0-9a-f]{64})\s*$", modelfile)
-            if isinstance(modelfile, str)
-            else None
-        )
-        digest = digest_match.group(1) if digest_match else None
-        if digest != self._expected_digest(MODEL_DIGEST):
+        digest = installed.get("digest")
+        if not isinstance(digest, str) or (
+            self._expected_digest(digest) != self._expected_digest(MODEL_DIGEST)
+        ):
             raise AnalysisError(
                 f"model digest mismatch for {MODEL}; the contract requires {MODEL_DIGEST}"
             )
@@ -209,6 +201,8 @@ class OllamaAnalyser:
             },
             "stream": False,
             "tools": [],
+            "think": False,
+            "keep_alive": KEEP_ALIVE,
         }
         try:
             response = self._client.post("/api/chat", json=request)

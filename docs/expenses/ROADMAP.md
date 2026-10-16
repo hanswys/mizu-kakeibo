@@ -17,6 +17,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V0.5-1 | Build one repeatable local inbox run | AFK | V0-2 proceed gate |
 | V0.5-2 | Connect and approve the agent-driven sync | HITL | V0.5-1 |
 | V0.5-3 | Skip promotions, social, and job alerts before analysis | AFK | V0.5-1 |
+| V0.5-4 | Switch to a lighter analyser model | AFK | V0.5-1 |
 | V1-1 | Automate new inbox processing | HITL | V0.5-2 proceed gate |
 
 # Milestone Version 0 Prove the Idea
@@ -91,7 +92,7 @@ Move the proven full-message analyser into a small local tool. The agent still r
 | --- | --- |
 | Runtime | Python with `pyproject.toml` |
 | Gmail retrieval | The claude.ai Gmail connector, controlled by the agent through the `expense-sync` skill |
-| Expense analyser | Local Ollama with `qwen2.5:14b`, using the versioned prompt and runtime settings in the [contract](inbox-expense-contract.md#4-model-runtime-and-prompt) |
+| Expense analyser | Local Ollama with `qwen3.5:4b-q4_K_M`, using the versioned prompt and runtime settings in the [contract](inbox-expense-contract.md#4-model-runtime-and-prompt) |
 | Validation | Pydantic |
 | Storage | SQLite with a unique Gmail message ID |
 | Testing | Pytest with sanitized fixtures and mocked model responses |
@@ -163,9 +164,28 @@ Apply the [skip filter](inbox-expense-contract.md#skip-filter) in the connector 
 - [x] Tests cover each filter rule, including a LinkedIn sender that is not a job alert.
 - [ ] The next real sync reports its filtered messages, and the user confirms none was an expense.
 
+## Issue V0.5-4 Switch to a lighter analyser model
+
+**Type:** AFK
+
+**Status:** `in-progress` (adopted on 2026-10-16 after the user set speed and laptop load ahead of small accuracy gains; it applies from the next sync)
+
+**Blocked by:** V0.5-1
+
+### What to build
+
+Replace `qwen2.5:14b` on Ollama `0.23.1` with the smaller model, runtime, and `expense-v0.9` prompt in the [contract](inbox-expense-contract.md#4-model-runtime-and-prompt), and point the `expense-sync` server at the new runtime.
+
+### Acceptance criteria
+
+- [x] Candidate models are compared on the 33-message private set; the chosen model makes no false or missed expenses ([analyser model evaluation](analyser-model-2026-10-16.md)).
+- [x] The analyser pins the new runtime, model digest, and prompt, turns thinking off, and releases the model soon after a sync.
+- [x] The `expense-sync` server runs the new runtime.
+- [ ] The next real sync completes on the new model, and the user confirms its decisions.
+
 ## Version 0.5 completion gate
 
-Version 0.5 is complete when all three issues meet their acceptance criteria. Version 1 begins only after the real agent-driven sync records `proceed`.
+Version 0.5 is complete when all four issues meet their acceptance criteria. Version 1 begins only after the real agent-driven sync records `proceed`.
 
 # Milestone Version 1 Automate Inbox Processing
 

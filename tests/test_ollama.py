@@ -36,19 +36,16 @@ def client_for(
         if request.url.path == "/api/version":
             return httpx.Response(200, json={"version": version})
         if request.url.path == "/api/tags":
-            return httpx.Response(200, json={"models": [{"name": model, "digest": "manifest"}]})
-        if request.url.path == "/api/show":
-            body = json.loads(request.content)
-            assert body == {"model": MODEL}
             return httpx.Response(
-                200,
-                json={"modelfile": f"FROM /models/blobs/{digest}"},
+                200, json={"models": [{"name": model, "digest": digest.removeprefix("sha256-")}]}
             )
         if request.url.path == "/api/chat":
             body = json.loads(request.content)
             assert body["model"] == MODEL
             assert body["stream"] is False
             assert body["tools"] == []
+            assert body["think"] is False
+            assert body["keep_alive"] == "30s"
             assert body["options"] == {
                 "temperature": 0,
                 "seed": 42,
