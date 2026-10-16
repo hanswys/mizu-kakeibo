@@ -62,6 +62,31 @@ uv run mizu-kakeibo process private-run/messages.json \
 `process` prints a summary of expense, not-expense, review, skipped, failed, and
 deferred message IDs, followed by the result for each message.
 
+### Gmail API sync
+
+Version 1 reads Gmail through the Gmail API instead of an agent, as described in
+the contract's Gmail API retrieval section. Save the Desktop OAuth client's JSON as
+`~/mizu-kakeibo-private/gmail-api/client_secret.json`, then sign in once in the
+browser with read-only access:
+
+```sh
+uv run mizu-kakeibo gmail-sign-in
+```
+
+The token is written beside the client secret with mode `0600`. A sign-in that
+still works is kept unless you add `--replace`. One command then searches,
+selects, fetches, and processes new inbox messages with no agent and no browser:
+
+```sh
+uv run mizu-kakeibo sync \
+  --database private-kakeibo.db --ledger private-ledger.csv
+```
+
+It prints the same summary and results as `process`. Add `--full` after a sync
+with failed messages, and `--limit N` for a smaller batch. When the sign-in has
+expired or been removed, it stops before reading Gmail and asks you to sign in
+again.
+
 ### Individual steps
 
 Normalize one Gmail MCP `read_email(format="full")` response or claude.ai Gmail
@@ -88,9 +113,9 @@ uv run mizu-kakeibo process private-envelopes.json \
   --database private-kakeibo.db --ledger private-ledger.csv
 ```
 
-Only one `process` runs at a time for a database: a run that finds another holding
-the lock file beside the database records nothing, prints `status` `locked`, and
-exits successfully. A message whose analysis times out or returns invalid output
+Only one `sync` or `process` runs at a time for a database: a run that finds another
+holding the lock file beside the database records nothing, prints `status` `locked`,
+and exits successfully. A message whose analysis times out or returns invalid output
 three times goes to review instead of being retried.
 
 Use `--reevaluate` to explicitly replace the active analysis for an already

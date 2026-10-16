@@ -12,10 +12,20 @@ from pydantic import ValidationError
 
 from .constants import SYNC_BATCH_LIMIT, SYNC_RECEIVED_SINCE
 from .evaluation import evaluate, load_dataset
+from .gmail_api import (
+    GMAIL_API_DIRECTORY,
+    GmailApiClient,
+    GmailRetrievalError,
+    GmailSignInError,
+    Retrieval,
+    load_credentials,
+    retrieve_new_messages,
+    sign_in,
+)
 from .models import AnalysisDecision, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
-from .processor import InboxProcessor, ProcessingStatus
+from .processor import InboxProcessor, ProcessingResult, ProcessingStatus
 from .runlock import RunLockHeldError, run_lock
 from .selection import search_query, select_new_messages
 from .storage import LedgerCorrectionError, ReviewResolutionError, Store
@@ -63,24 +73,7 @@ def _id_list(value: Any, key: str) -> list[str]:
     return message_ids
 
 
-def command_process(args: argparse.Namespace) -> int:
-    messages = [parse_inbox_message(value) for value in _objects(_read_json(args.input))]
-    selection = _read_json(args.selection) if args.selection is not None else {}
-    try:
-        with run_lock(args.database), OllamaAnalyser() as analyser:
-            results = InboxProcessor(_store(args), analyser).process_batch(
-                messages, reevaluate=args.reevaluate
-            )
-    except RunLockHeldError as error:
-        _write_json(
-            {
-                "status": "locked",
-                "message": "another run is in progress; nothing was recorded",
-                "holder": error.holder,
-            },
-            None,
-        )
-        return 0
+def _process_report(selection: Any, results: list[ProcessingResult]) -> dict[str, Any]:
     summary: dict[str, list[str]] = {
         "expense": [],
         "not_expense": [],
@@ -95,23 +88,108 @@ def command_process(args: argparse.Namespace) -> int:
             summary[result.decision].append(result.message_id)
         else:
             summary[result.status.value].append(result.message_id)
+    return {
+        "summary": summary,
+        "results": [
+            {
+                "provider": result.provider,
+                "message_id": result.message_id,
+                "status": result.status.value,
+                "decision": result.decision,
+                "error": result.error,
+            }
+            for result in results
+        ],
+    }
+
+
+def _exit_status(results: list[ProcessingResult]) -> int:
+    return 1 if any(result.status is ProcessingStatus.FAILED for result in results) else 0
+
+
+def _report_locked(error: RunLockHeldError) -> int:
     _write_json(
         {
-            "summary": summary,
-            "results": [
-                {
-                    "provider": result.provider,
-                    "message_id": result.message_id,
-                    "status": result.status.value,
-                    "decision": result.decision,
-                    "error": result.error,
-                }
-                for result in results
-            ],
+            "status": "locked",
+            "message": "another run is in progress; nothing was recorded",
+            "holder": error.holder,
         },
         None,
     )
-    return 1 if any(result.status is ProcessingStatus.FAILED for result in results) else 0
+    return 0
+
+
+def command_process(args: argparse.Namespace) -> int:
+    messages = [parse_inbox_message(value) for value in _objects(_read_json(args.input))]
+    selection = _read_json(args.selection) if args.selection is not None else {}
+    try:
+        with run_lock(args.database), OllamaAnalyser() as analyser:
+            results = InboxProcessor(_store(args), analyser).process_batch(
+                messages, reevaluate=args.reevaluate
+            )
+    except RunLockHeldError as error:
+        return _report_locked(error)
+    _write_json(_process_report(selection, results), None)
+    return _exit_status(results)
+
+
+def _process_retrieved(
+    processor: InboxProcessor, retrieval: Retrieval, message_id: str
+) -> ProcessingResult:
+    error = retrieval.failures.get(message_id)
+    if error is None:
+        try:
+            message = normalize_gmail_message(retrieval.messages[message_id])
+        except (NormalizationError, ValidationError) as normalization_error:
+            error = f"normalization failed: {normalization_error}"
+        else:
+            return processor.process_one(message)
+    return ProcessingResult("gmail", message_id, ProcessingStatus.FAILED, error=error)
+
+
+def command_sync(args: argparse.Namespace) -> int:
+    try:
+        with run_lock(args.database):
+            credentials = load_credentials(args.gmail_directory)
+            store = _store(args)
+            with OllamaAnalyser() as analyser, GmailApiClient(credentials) as gmail:
+                analyser.verify_runtime()
+                retrieval = retrieve_new_messages(
+                    gmail,
+                    store,
+                    received_since=datetime.fromisoformat(args.received_since),
+                    limit=args.limit,
+                    full=args.full,
+                )
+                processor = InboxProcessor(store, analyser)
+                results = [
+                    _process_retrieved(processor, retrieval, message_id)
+                    for message_id in retrieval.selection.message_ids
+                ]
+    except RunLockHeldError as error:
+        return _report_locked(error)
+    _write_json(_process_report(retrieval.selection.as_json(), results), None)
+    return _exit_status(results)
+
+
+def command_gmail_sign_in(args: argparse.Namespace) -> int:
+    if not args.replace:
+        try:
+            load_credentials(args.gmail_directory)
+        except GmailSignInError:
+            pass
+        else:
+            raise ValueError("Gmail is already signed in; pass --replace to sign in again")
+    credentials = sign_in(args.gmail_directory)
+    _write_json(
+        {
+            "status": "signed_in",
+            "scopes": sorted(credentials.granted_scopes or credentials.scopes or ()),
+            "directory": str(args.gmail_directory),
+        },
+        None,
+    )
+    return 0
 
 
 def _session(args: argparse.Namespace) -> Path:
@@ -331,6 +409,27 @@ def build_parser() -> argparse.ArgumentParser:
     _add_storage_options(select_new)
     select_new.set_defaults(handler=command_select_new)
 
+    sync = subparsers.add_parser(
+        "sync", help="read new inbox messages through the Gmail API and process them"
+    )
+    sync.add_argument("--received-since", default=SYNC_RECEIVED_SINCE)
+    sync.add_argument("--limit", type=int, default=SYNC_BATCH_LIMIT)
+    sync.add_argument(
+        "--full", action="store_true", help="search from the sync start, ignoring progress"
+    )
+    sync.add_argument("--gmail-directory", type=Path, default=GMAIL_API_DIRECTORY)
+    _add_storage_options(sync)
+    sync.set_defaults(handler=command_sync)
+
+    gmail_sign_in = subparsers.add_parser(
+        "gmail-sign-in", help="sign in to Gmail with read-only access in the browser"
+    )
+    gmail_sign_in.add_argument("--gmail-directory", type=Path, default=GMAIL_API_DIRECTORY)
+    gmail_sign_in.add_argument(
+        "--replace", action="store_true", help="sign in again even if the sign-in still works"
+    )
+    gmail_sign_in.set_defaults(handler=command_gmail_sign_in)
+
     collect_raw = subparsers.add_parser(
         "collect-raw",
         help="collect this session's Gmail connector RAW messages for the selected IDs",
@@ -377,6 +476,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (
         AnalysisError,
         FileNotFoundError,
+        GmailRetrievalError,
+        GmailSignInError,
         json.JSONDecodeError,
         LedgerCorrectionError,
         NormalizationError,

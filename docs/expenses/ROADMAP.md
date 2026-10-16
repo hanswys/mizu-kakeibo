@@ -224,7 +224,7 @@ Remove the need for an interactive agent request. A scheduled personal service r
 
 **Type:** AFK
 
-**Status:** `ready` (triaged on 2026-10-16: the sign-in lifetime check moved to [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) and the human check to [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages). A [Gmail API spike](gmail-api-spike-2026-10-16.md) the same day confirmed the scope and showed that search, `raw`, and envelopes match the connector.)
+**Status:** `complete` (built on 2026-10-16 as `gmail-sign-in` and `sync`, and tested with mocked Gmail responses only; it has not yet run on the live inbox, which [V1-3](#issue-v1-3-schedule-the-daily-sync-on-the-laptop) first does. Triaged earlier that day: the sign-in lifetime check moved to [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) and the human check to [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages). A [Gmail API spike](gmail-api-spike-2026-10-16.md) the same day confirmed the scope and showed that search, `raw`, and envelopes match the connector.)
 
 **Blocked by:** V0.5-2 with a `proceed` decision
 
@@ -234,20 +234,20 @@ Add [Gmail API retrieval](inbox-expense-contract.md#gmail-api-retrieval) of new 
 
 ### Acceptance criteria
 
-- [ ] Gmail access uses only `gmail.readonly`, the minimum read-only scope that retrieves inbox messages and their full content.
-- [ ] The sign-in command writes the OAuth token outside the repository, with the file modes in the contract. A sync never opens a browser.
-- [ ] An expired or removed sign-in stops the sync before retrieval with a sign-in error that is not counted against any message.
-- [ ] `snippet` never reaches a run file or log.
-- [ ] One command retrieves and analyses new inbox messages without an agent.
-- [ ] Selection, the skip filter, the 25-message batch, and oversized-message review match the connector sync, and the command reports the same seven `process` groups.
-- [ ] The automated path produces the same decisions and ledger records as the local batch command.
-- [ ] Tests use mocked API responses and sanitized fixtures to cover search paging, a `From` header with a display name, `snippet` removal, an expired sign-in, and a rate-limit error that leaves the message retryable.
+- [x] Gmail access uses only `gmail.readonly`, the minimum read-only scope that retrieves inbox messages and their full content.
+- [x] The sign-in command writes the OAuth token outside the repository, with the file modes in the contract. A sync never opens a browser.
+- [x] An expired or removed sign-in stops the sync before retrieval with a sign-in error that is not counted against any message.
+- [x] `snippet` never reaches a run file or log.
+- [x] One command retrieves and analyses new inbox messages without an agent.
+- [x] Selection, the skip filter, the 25-message batch, and oversized-message review match the connector sync, and the command reports the same seven `process` groups.
+- [x] The automated path produces the same decisions and ledger records as the local batch command.
+- [x] Tests use mocked API responses and sanitized fixtures to cover search paging, a `From` header with a display name, `snippet` removal, an expired sign-in, and a rate-limit error that leaves the message retryable.
 
 ## Issue V1-2 Lock processing runs and stop retrying failing messages
 
 **Type:** AFK
 
-**Status:** `complete` (designed and built on 2026-10-16 from the [scheduler spike](scheduler-spike-2026-10-16.md). Gmail retrieval errors arrive with [V1-1](#issue-v1-1-read-new-inbox-messages-through-the-gmail-api), whose tests cover a retryable rate-limit error.)
+**Status:** `complete` (designed and built on 2026-10-16 from the [scheduler spike](scheduler-spike-2026-10-16.md). The Gmail API `sync` from [V1-1](#issue-v1-1-read-new-inbox-messages-through-the-gmail-api) takes the same lock, and its retrieval errors are not counted against a message.)
 
 **Blocked by:** None - can start immediately
 
@@ -307,7 +307,7 @@ Show the [notification and dialog](inbox-expense-contract.md#9-scheduled-run) af
 
 **Type:** HITL
 
-**Status:** `in-progress` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24)
+**Status:** `in-progress` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24. Until then, do not run `gmail-sign-in --replace`, which would issue a new token and restart its age.)
 
 **Blocked by:** None - can start immediately
 
