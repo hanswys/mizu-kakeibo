@@ -222,18 +222,21 @@ Remove the need for an interactive agent request. A scheduled personal service r
 
 **Type:** HITL
 
-**Status:** `needs-triage` (unblocked on 2026-10-16 by the V0.5-2 `proceed` decision)
+**Status:** `needs-triage` (unblocked on 2026-10-16 by the V0.5-2 `proceed` decision; a [Gmail API spike](gmail-api-spike-2026-10-16.md) the same day confirmed the scope and showed search, `raw`, and envelope parity with the connector, and a refresh token in the In production status is being checked past seven days)
 
 **Blocked by:** V0.5-2 with a `proceed` decision
 
 ### What to build
 
-Add read-only Gmail authentication and retrieval of new inbox messages, so a sync needs no interactive agent request. [V1-3](#issue-v1-3-schedule-the-daily-sync-on-the-laptop) runs it on a schedule. The automated path reuses the Version 0.5 workflow unchanged: it skips processed IDs, retrieves every new message in full, analyses it, logs accepted transactions, and preserves uncertain cases for review.
+Add [Gmail API retrieval](inbox-expense-contract.md#gmail-api-retrieval) of new inbox messages, with its sign-in command, so a sync needs no interactive agent request. [V1-3](#issue-v1-3-schedule-the-daily-sync-on-the-laptop) runs it on a schedule. The automated path reuses the Version 0.5 workflow unchanged: it skips processed IDs, retrieves every new message in full, analyses it, logs accepted transactions, and preserves uncertain cases for review.
 
 ### Acceptance criteria
 
-- [ ] Gmail access uses the minimum read-only scope needed to retrieve inbox messages and their full content.
+- [ ] Gmail access uses only `gmail.readonly`, the minimum read-only scope that retrieves inbox messages and their full content.
 - [ ] OAuth credentials and tokens are stored outside the repository.
+- [ ] A refresh token issued with the In production status still refreshes more than seven days after sign-in.
+- [ ] An expired or removed sign-in stops the sync before retrieval with a sign-in error that is not counted against any message.
+- [ ] `snippet` never reaches a run file or log.
 - [ ] One command retrieves and analyses new inbox messages without an agent.
 - [ ] The automated path produces the same decisions and ledger records as the local batch command.
 - [ ] A human verifies an expense, a non-expense, a review item, and the extracted transaction values.

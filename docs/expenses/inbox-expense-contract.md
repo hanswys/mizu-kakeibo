@@ -32,9 +32,9 @@ Search inbox message IDs outside Promotions and Social
 
 There is no metadata relevance model, Gmail-label branch, or second analyser in Version 0. The [skip filter](#skip-filter) is a fixed rule applied to search metadata before any message is retrieved.
 
-## 1. Gmail MCP boundary
+## 1. Gmail boundary
 
-Two Gmail tools have been used. The local Gmail MCP server, verified on 2026-10-06 and described in the next two subsections, is legacy: it is no longer installed, but the normalizer still reads its `read_email` responses and `filter-new` still reads its search responses. Syncs use the [claude.ai Gmail connector](#claudeai-gmail-connector), as described in [connector sync](#connector-sync).
+Two Gmail MCP tools have been used, and Version 1 adds the Gmail API. The local Gmail MCP server, verified on 2026-10-06 and described in the next two subsections, is legacy: it is no longer installed, but the normalizer still reads its `read_email` responses and `filter-new` still reads its search responses. Agent-driven syncs use the [claude.ai Gmail connector](#claudeai-gmail-connector), as described in [connector sync](#connector-sync). Version 1 replaces them with [Gmail API retrieval](#gmail-api-retrieval).
 
 ### Verified search behavior
 
@@ -133,7 +133,20 @@ The filter applies only to the expense sync. It reads search metadata, so a filt
 
 Filtered messages are not recorded in the processed-message store. Because the search starts from the newest processed message, an older filtered message drops out of later searches; one inside the search window is filtered again at no model cost. A change to the filter is a product change that starts in the [MVP](MVP.md#core-workflow).
 
-Reading the transcript depends on Claude Code's private file layout, which may change without notice. It is a stopgap for the agent-driven sync; Version 1 replaces the agent and transcript with read-only Gmail API access.
+Reading the transcript depends on Claude Code's private file layout, which may change without notice. It is a stopgap for the agent-driven sync; Version 1 replaces the agent and transcript with [Gmail API retrieval](#gmail-api-retrieval).
+
+### Gmail API retrieval
+
+A Version 1 sync reads Gmail through the Gmail API instead of the connector. Selection, the [skip filter](#skip-filter), the `RAW` conversion, normalization, and processing are unchanged. The [Gmail API spike](gmail-api-spike-2026-10-16.md) found the same search results, identical `raw` messages, and identical envelopes through both.
+
+- **Access.** A Desktop OAuth client in the user's own Google Cloud project requests only `gmail.readonly`, the narrowest scope that can search and read bodies: `gmail.metadata` can do neither. The client secret and token are stored as files with mode `0600` in `~/mizu-kakeibo-private/gmail-api/`, a directory with mode `0700`, never in the repository. The consent screen is External, because a personal account has no Workspace organization, and its publishing status is In production, unverified, so the refresh token does not expire after seven days as it does in Testing.
+- **Shared sign-in.** This adapter and its token are shared with the job tracker, which keeps its own search and processed-message tracking. A change to the scope, the token location, or the sign-in affects both projects.
+- **Sign-in.** A separate command runs the browser consent through a loopback redirect and writes the token. A sync never opens a browser.
+- **Expired sign-in.** When the token cannot be refreshed, the sync retrieves and records nothing and fails with a sign-in error that tells the user to run the sign-in command. It is not a message's own failure, so it is not counted under [repeated failures](#repeated-failures).
+- **Search.** `messages.list` runs the `search-query` query, following `nextPageToken` to the end. It returns matching messages rather than threads, so there are no incomplete threads.
+- **Metadata.** `messages.get` in `metadata` format, with the `From` header, gives each message's `threadId`, `internalDate`, and `labelIds`. The `From` value is selection's `sender`. Unlike the connector's bare address it may carry a display name, which the skip filter's address parsing accepts.
+- **Fetch.** `messages.get` in `raw` format retrieves each selected ID. Its response has the fields of a connector `RAW` response except `viewUrl`, plus `snippet`. `snippet` holds body text, so it is removed on receipt and never written to a run file or log.
+- **Errors and quota.** A sync of 25 messages uses about 1,000 of the 6,000 quota units a user may spend per minute. A rate-limit or server error is a Gmail retrieval error, which leaves the message retryable and is not counted against it.
 
 ## 2. Normalized inbox-message envelope
 
@@ -449,7 +462,7 @@ The full report may contain Gmail message IDs and must stay private. The printed
 
 ## 9. Scheduled run
 
-Version 1 runs the [scheduled sync](MVP.md#scheduled-sync) on the user's macOS laptop. This section covers how a run starts and reports; retrieval through the Gmail API is defined separately.
+Version 1 runs the [scheduled sync](MVP.md#scheduled-sync) on the user's macOS laptop. This section covers how a run starts and reports; retrieval is defined in [Gmail API retrieval](#gmail-api-retrieval).
 
 - **Trigger.** A user LaunchAgent fires at minute 0 of each hour from 08:00 to 23:00 through `StartCalendarInterval`, with no `RunAtLoad` or `KeepAlive` and `ProcessType` `Background`. It uses absolute paths, because launchd provides only `/usr/bin:/bin:/usr/sbin:/sbin`. launchd runs hours missed during sleep once, at the next wake, and never starts a second instance of a running job.
 - **Gates.** After taking the [run lock](#run-lock), a run checks these in order. The first that fails ends the run successfully, with its reason recorded and no notification.
