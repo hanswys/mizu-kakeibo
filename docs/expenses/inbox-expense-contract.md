@@ -137,7 +137,7 @@ Reading the transcript depends on Claude Code's private file layout, which may c
 
 ### Gmail API retrieval
 
-A Version 1 sync reads Gmail through the Gmail API instead of the connector. Selection, the [skip filter](#skip-filter), the `RAW` conversion, normalization, and processing are unchanged. The [Gmail API spike](gmail-api-spike-2026-10-16.md) found the same search results, identical `raw` messages, and identical envelopes through both.
+A Version 1 sync reads Gmail through the Gmail API instead of the connector. Selection, the [skip filter](#skip-filter), the `RAW` conversion, normalization, and processing are unchanged. The batch limit stays at 25 new IDs, as the [MVP](MVP.md#scheduled-sync) chose; without an agent it bounds a run's length and laptop load rather than the agent's context. The [Gmail API spike](gmail-api-spike-2026-10-16.md) found the same search results, identical `raw` messages, and identical envelopes through both.
 
 - **Access.** A Desktop OAuth client in the user's own Google Cloud project requests only `gmail.readonly`, the narrowest scope that can search and read bodies: `gmail.metadata` can do neither. The client secret and token are stored as files with mode `0600` in `~/mizu-kakeibo-private/gmail-api/`, a directory with mode `0700`, never in the repository. The consent screen is External, because a personal account has no Workspace organization, and its publishing status is In production, unverified, so the refresh token does not expire after seven days as it does in Testing.
 - **Shared sign-in.** This adapter and its token are shared with the job tracker, which keeps its own search and processed-message tracking. A change to the scope, the token location, or the sign-in affects both projects.
