@@ -15,6 +15,16 @@ REQUEST_TIMEOUT_SECONDS = 300.0
 
 SYNC_RECEIVED_SINCE = "2026-10-10T00:00:00+08:00"
 SYNC_BATCH_LIMIT = 25
+SKIPPED_CATEGORY_LABELS = ("CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL")
+SKIPPED_SEARCH_TERMS = "-category:promotions -category:social"
+JOB_ALERT_SENDER_ADDRESSES = ("jobalerts-noreply@linkedin.com", "jobs-noreply@linkedin.com")
+JOB_ALERT_SENDER_DOMAINS = (
+    "jobstreet.com",
+    "jobs2web.com",
+    "glassdoor.com",
+    "builtin.com",
+    "myvisajobs.com",
+)
 
 SYSTEM_PROMPT = """You are the Mizu Kakeibo expense analyser.
 

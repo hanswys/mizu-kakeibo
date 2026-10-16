@@ -8,7 +8,7 @@ It does not track implementation status or prescribe detailed schemas and invari
 
 ## Product idea
 
-Mizu Kakeibo watches the Gmail inbox for emails that may represent expenses. Every new inbox email is considered, so the user does not need to know which banks, merchants, or payment applications will send notifications in advance.
+Mizu Kakeibo watches the Gmail inbox for emails that may represent expenses. Every new inbox email is considered, so the user does not need to know which banks, merchants, or payment applications will send notifications in advance. The only exceptions are a fixed skip filter for mail that has not carried expenses: Gmail's Promotions and Social tabs and job-alert senders.
 
 The system uses one full-message analyser to decide whether an email represents an expense. Confirmed expenses are written to a personal ledger, uncertain messages are held for review, and other messages are marked as processed without creating a transaction. Gmail remains the source of truth.
 
@@ -16,6 +16,8 @@ The system uses one full-message analyser to decide whether an email represents 
 
 ```text
 New Gmail inbox message
+  -> Skip without analysis if it is in Promotions or Social,
+     or comes from a job-alert sender
   -> Skip if the Gmail message ID was already processed,
      unless re-evaluation was explicitly requested
   -> Retrieve the full message
@@ -25,7 +27,9 @@ New Gmail inbox message
       -> Uncertain or incomplete: add the message to the review queue
 ```
 
-Every new message follows the same path. The initial design has no metadata gate, Gmail-label fast path, or separate relevance model.
+Every new message that passes the skip filter follows the same path. There is no Gmail-label fast path or separate relevance model.
+
+The skip filter was adopted on 2026-10-16 because analysing every message used most of a 16 GB laptop's memory for about a minute per message, and most messages were promotions and job alerts. In the 33-message evaluation set and the first 78 analysed inbox messages, no expense came from Promotions, Social, or a job-alert sender, and the only review item among them was a promotion too long to analyse. The trade-off is accepted: a receipt that Gmail files under Promotions or Social is never analysed. Promotions and Social are left out of the inbox search itself, which also keeps each sync's search smaller; they remain in their Gmail tabs. Skipped job alerts are reported in each sync's result.
 
 ## Message decisions
 
@@ -62,7 +66,8 @@ The authoritative field definitions and invariants live in the [inbox-to-expense
 - Process new messages in bounded batches, oldest first; the next sync continues with any that remain.
 - Keep the Gmail message ID as the unique source identifier.
 - Skip processed IDs unless the user explicitly requests re-evaluation.
-- Retrieve the full content of every new message before analysis.
+- Leave Gmail's Promotions and Social tabs out of the search, and skip messages from job-alert senders without retrieving or analysing them, reporting them in the sync result.
+- Retrieve the full content of every other new message before analysis.
 - Normalize and analyse supported message-body text only; do not fetch or analyse attachments in Version 0.
 - Preserve the Gmail message ID so the original message can be opened during review.
 - Follow that contract for retrieval, normalization, analysis, validation, and persistence.
@@ -101,13 +106,13 @@ Applications that send no email are outside the MVP and may require direct integ
 These improvements wait until the MVP is complete:
 
 - **Oversized messages.** Analyse a message that is too long for the analyser instead of sending it to review.
-- **Sync performance.** Make each sync faster and lighter. The first real sync, on 2026-10-15, took about a minute per message, and most of the messages it analysed were job alerts and promotions.
+- **Sync performance.** Make each sync faster and lighter. The first real sync, on 2026-10-15, took about a minute per message, and most of the messages it analysed were job alerts and promotions. The skip filter above was pulled forward from this work; a smaller analyser model may follow if it keeps the evaluation results.
 
 ## Out of scope
 
 The MVP does not require:
 
-- A metadata-only relevance gate.
+- A model-based metadata relevance gate. The skip filter is a fixed rule, not a model.
 - Gmail labels or filters for financial senders.
 - A complete definition of every financial event type before validation.
 - Attachment retrieval or analysis.
@@ -126,9 +131,9 @@ The MVP is complete when one agent request:
 
 1. Finds new inbox messages and retrieves each new message in full.
 2. Does not reprocess Gmail message IDs already recorded.
-3. Sends every new message through the same expense analyser.
+3. Sends every new message that passes the skip filter through the same expense analyser.
 4. Records each successful analysis as `expense`, `not_expense`, or `needs_review`.
 5. Logs a traceable ledger row only for accepted expenses.
 6. Presents uncertain decisions and missing transaction values for review.
 
-The first validation run should establish the full-message baseline. Metadata routing and Gmail labels may be evaluated later only if the baseline shows a meaningful cost, latency, or privacy problem.
+The first validation run established the full-message baseline, which showed a meaningful latency problem; the skip filter is the response. Further metadata routing and Gmail labels may be evaluated later on the same terms.
