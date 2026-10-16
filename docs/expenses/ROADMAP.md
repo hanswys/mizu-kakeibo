@@ -126,7 +126,7 @@ Create one command that accepts a batch of normalized full Gmail messages from t
 
 **Type:** HITL
 
-**Status:** `in-progress` (the [connector sync](inbox-expense-contract.md#connector-sync) and the `expense-sync` skill are built; a 10-message trial on 2026-10-15 processed every message, skipped all of them on an immediate replay without model calls, and opened its Gmail link correctly. The trial found 466 inbox messages since 2026-10-01, so the user moved the start to 2026-10-10, which leaves about 140. The first full sync, on 2026-10-15, processed a 25-message batch at about a minute per message: one expense, 23 non-expenses, and one context overflow, with 93 deferred. Over-budget messages now go to review instead of failing on every sync. The remaining syncs, a real review resolved beside its Gmail message, and the decision are next.)
+**Status:** `complete` (the [connector sync](inbox-expense-contract.md#connector-sync) and the `expense-sync` skill are built; a 10-message trial on 2026-10-15 processed every message, skipped all of them on an immediate replay without model calls, and opened its Gmail link correctly. The trial found 466 inbox messages since 2026-10-01, so the user moved the start to 2026-10-10, which leaves about 140. The first full sync, on 2026-10-15, processed a 25-message batch at about a minute per message: one expense, 23 non-expenses, and one context overflow, with 93 deferred. Over-budget messages now go to review instead of failing on every sync. On 2026-10-16 the user resolved real review items beside their Gmail messages and moved the start to 2026-10-16, and a sync on the new model processed every new message with no failures. The user recorded `proceed` on 2026-10-16.)
 
 **Blocked by:** V0.5-1
 
@@ -136,19 +136,19 @@ Connect Gmail MCP retrieval to the local batch command and verify the workflow w
 
 ### Acceptance criteria
 
-- [ ] One agent request retrieves all new inbox messages in the selected batch.
-- [ ] Every new message is retrieved in full before analysis.
-- [ ] The result identifies expense, not-expense, review, skipped, and failed message IDs.
-- [ ] Review items can be resolved while viewing the original Gmail message.
-- [ ] An immediate replay makes no model calls for already processed Gmail message IDs.
-- [ ] No credentials, real message contents, ledger data, or database files enter version control.
-- [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
+- [x] One agent request retrieves all new inbox messages in the selected batch.
+- [x] Every new message is retrieved in full before analysis.
+- [x] The result identifies expense, not-expense, review, skipped, and failed message IDs.
+- [x] Review items can be resolved while viewing the original Gmail message.
+- [x] An immediate replay makes no model calls for already processed Gmail message IDs.
+- [x] No credentials, real message contents, ledger data, or database files enter version control.
+- [x] The user records a `proceed`, `revise`, or `stop` decision with reasons: `proceed` on 2026-10-16, because the sync works end to end and is fast enough.
 
 ## Issue V0.5-3 Skip promotions, social, and job alerts before analysis
 
 **Type:** AFK
 
-**Status:** `in-progress` (built on 2026-10-16 after the first full sync showed most analysed messages were promotions and job alerts; it applies from the next sync)
+**Status:** `complete` (built on 2026-10-16 after the first full sync showed most analysed messages were promotions and job alerts; the next sync filtered four job alerts, and the user confirmed none was an expense)
 
 **Blocked by:** V0.5-1
 
@@ -162,13 +162,13 @@ Apply the [skip filter](inbox-expense-contract.md#skip-filter) in the connector 
 - [x] Selection filters skipped-category labels and job-alert senders, and reports them as `filtered`.
 - [x] Filtered messages are not recorded in the processed-message store.
 - [x] Tests cover each filter rule, including a LinkedIn sender that is not a job alert.
-- [ ] The next real sync reports its filtered messages, and the user confirms none was an expense.
+- [x] The next real sync reports its filtered messages, and the user confirms none was an expense.
 
 ## Issue V0.5-4 Switch to a lighter analyser model
 
 **Type:** AFK
 
-**Status:** `in-progress` (adopted on 2026-10-16 after the user set speed and laptop load ahead of small accuracy gains; it applies from the next sync)
+**Status:** `complete` (adopted on 2026-10-16 after the user set speed and laptop load ahead of small accuracy gains; the next sync analysed three new messages on it, and the user confirmed its decisions)
 
 **Blocked by:** V0.5-1
 
@@ -181,7 +181,7 @@ Replace `qwen2.5:14b` on Ollama `0.23.1` with the smaller model, runtime, and `e
 - [x] Candidate models are compared on the 33-message private set; the chosen model makes no false or missed expenses ([analyser model evaluation](analyser-model-2026-10-16.md)).
 - [x] The analyser pins the new runtime, model digest, and prompt, turns thinking off, and releases the model soon after a sync.
 - [x] The `expense-sync` server runs the new runtime.
-- [ ] The next real sync completes on the new model, and the user confirms its decisions.
+- [x] The next real sync completes on the new model, and the user confirms its decisions.
 
 ## Version 0.5 completion gate
 
@@ -197,7 +197,7 @@ Remove the need for an interactive agent request. A scheduled personal service r
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `needs-triage` (unblocked on 2026-10-16 by the V0.5-2 `proceed` decision)
 
 **Blocked by:** V0.5-2 with a `proceed` decision
 
