@@ -16,6 +16,7 @@ from .models import AnalysisDecision, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingStatus
+from .runlock import RunLockHeldError, run_lock
 from .selection import search_query, select_new_messages
 from .storage import LedgerCorrectionError, ReviewResolutionError, Store
 from .transcript import collect_raw_messages, connector_message_metadata, current_session_transcript
@@ -65,10 +66,21 @@ def _id_list(value: Any, key: str) -> list[str]:
 def command_process(args: argparse.Namespace) -> int:
     messages = [parse_inbox_message(value) for value in _objects(_read_json(args.input))]
     selection = _read_json(args.selection) if args.selection is not None else {}
-    with OllamaAnalyser() as analyser:
-        results = InboxProcessor(_store(args), analyser).process_batch(
-            messages, reevaluate=args.reevaluate
+    try:
+        with run_lock(args.database), OllamaAnalyser() as analyser:
+            results = InboxProcessor(_store(args), analyser).process_batch(
+                messages, reevaluate=args.reevaluate
+            )
+    except RunLockHeldError as error:
+        _write_json(
+            {
+                "status": "locked",
+                "message": "another run is in progress; nothing was recorded",
+                "holder": error.holder,
+            },
+            None,
         )
+        return 0
     summary: dict[str, list[str]] = {
         "expense": [],
         "not_expense": [],

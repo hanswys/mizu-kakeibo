@@ -16,6 +16,7 @@ KEEP_ALIVE = "30s"
 
 SYNC_RECEIVED_SINCE = "2026-10-16T00:00:00+08:00"
 SYNC_BATCH_LIMIT = 25
+ANALYSIS_FAILURE_LIMIT = 3
 SKIPPED_CATEGORY_LABELS = ("CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL")
 SKIPPED_SEARCH_TERMS = "-category:promotions -category:social"
 JOB_ALERT_SENDER_ADDRESSES = ("jobalerts-noreply@linkedin.com", "jobs-noreply@linkedin.com")

@@ -88,6 +88,11 @@ uv run mizu-kakeibo process private-envelopes.json \
   --database private-kakeibo.db --ledger private-ledger.csv
 ```
 
+Only one `process` runs at a time for a database: a run that finds another holding
+the lock file beside the database records nothing, prints `status` `locked`, and
+exits successfully. A message whose analysis times out or returns invalid output
+three times goes to review instead of being retried.
+
 Use `--reevaluate` to explicitly replace the active analysis for an already
 processed source. Review items can be listed, each with a link to its Gmail message,
 and resolved without modifying the source message:

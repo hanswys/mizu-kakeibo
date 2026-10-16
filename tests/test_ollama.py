@@ -16,6 +16,7 @@ from mizu_kakeibo.models import ExpenseAnalysisInput
 from mizu_kakeibo.ollama import (
     AnalysisError,
     ContextOverflowError,
+    MessageAnalysisError,
     ModelMemory,
     OllamaAnalyser,
     TokenUsage,
@@ -111,6 +112,48 @@ def test_malformed_model_output_is_operational_failure(inbox_message) -> None:
         analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
     assert "not JSON" not in str(error.value)
     assert "output contract" in str(error.value)
+
+
+def _raises(error_type):
+    def respond(request: httpx.Request) -> httpx.Response:
+        raise error_type("simulated failure", request=request)
+
+    return respond
+
+
+@pytest.mark.parametrize(
+    ("respond", "counted"),
+    [
+        (_raises(httpx.ReadTimeout), True),
+        (
+            lambda _: httpx.Response(
+                200, json={"message": {"content": "not JSON"}, "prompt_eval_count": 900}
+            ),
+            True,
+        ),
+        (lambda _: httpx.Response(200, json={"prompt_eval_count": 900}), True),
+        (_raises(httpx.ConnectError), False),
+        (_raises(httpx.ConnectTimeout), False),
+        (lambda _: httpx.Response(500, json={"error": "model failed to load"}), False),
+    ],
+)
+def test_only_a_timeout_or_invalid_output_counts_against_the_message(
+    inbox_message, respond, counted
+) -> None:
+    runtime = client_for()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/chat":
+            return respond(request)
+        return runtime.get(request.url.path)
+
+    analyser = OllamaAnalyser(
+        client=httpx.Client(transport=httpx.MockTransport(handler), base_url="http://test")
+    )
+    with pytest.raises(AnalysisError) as error:
+        analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
+    assert isinstance(error.value, MessageAnalysisError) is counted
+    assert not isinstance(error.value, ContextOverflowError)
 
 
 def test_prompt_that_fills_the_reply_budget_is_accepted(inbox_message) -> None:

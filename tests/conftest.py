@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -22,3 +25,36 @@ def inbox_message() -> InboxMessage:
             truncated=False,
         ),
     )
+
+
+_HOLD_RUN_LOCK = """
+import sys
+from pathlib import Path
+from mizu_kakeibo.runlock import run_lock
+with run_lock(Path(sys.argv[1])):
+    print("locked", flush=True)
+    sys.stdin.read()
+"""
+
+
+@pytest.fixture
+def hold_run_lock():
+    """Start a separate process that holds a database's run lock until the test ends."""
+    holders: list[subprocess.Popen[str]] = []
+
+    def hold(database: Path) -> subprocess.Popen[str]:
+        holder = subprocess.Popen(
+            [sys.executable, "-c", _HOLD_RUN_LOCK, str(database)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        holders.append(holder)
+        assert holder.stdout is not None
+        assert holder.stdout.readline() == "locked\n"
+        return holder
+
+    yield hold
+    for holder in holders:
+        holder.kill()
+        holder.wait()
