@@ -19,10 +19,12 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V0.5-3 | Skip promotions, social, and job alerts before analysis | AFK | V0.5-1 |
 | V0.5-4 | Switch to a lighter analyser model | AFK | V0.5-1 |
 | V0.5-5 | Correct a logged expense | AFK | V0.5-1 |
-| V1-1 | Automate new inbox processing | HITL | V0.5-2 proceed gate |
+| V1-1 | Read new inbox messages through the Gmail API | AFK | V0.5-2 proceed gate |
 | V1-2 | Lock processing runs and stop retrying failing messages | AFK | None |
 | V1-3 | Schedule the daily sync on the laptop | HITL | V1-1, V1-2 |
 | V1-4 | Report each scheduled sync and open the review list | AFK | V1-3 |
+| V1-5 | Confirm the Gmail sign-in lasts past seven days | HITL | None |
+| V1-6 | Verify scheduled processing on real inbox messages | HITL | V1-3, V1-4, V1-5 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -218,28 +220,28 @@ Version 0.5 was complete when V0.5-1 to V0.5-4 met their acceptance criteria. V0
 
 Remove the need for an interactive agent request. A scheduled personal service retrieves new inbox messages through read-only Gmail API access and passes them through the same proven analyser and ledger workflow.
 
-## Issue V1-1 Automate new inbox processing
+## Issue V1-1 Read new inbox messages through the Gmail API
 
-**Type:** HITL
+**Type:** AFK
 
-**Status:** `needs-triage` (unblocked on 2026-10-16 by the V0.5-2 `proceed` decision; a [Gmail API spike](gmail-api-spike-2026-10-16.md) the same day confirmed the scope and showed search, `raw`, and envelope parity with the connector, and a refresh token in the In production status is being checked past seven days)
+**Status:** `ready` (triaged on 2026-10-16: the sign-in lifetime check moved to [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) and the human check to [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages). A [Gmail API spike](gmail-api-spike-2026-10-16.md) the same day confirmed the scope and showed that search, `raw`, and envelopes match the connector.)
 
 **Blocked by:** V0.5-2 with a `proceed` decision
 
 ### What to build
 
-Add [Gmail API retrieval](inbox-expense-contract.md#gmail-api-retrieval) of new inbox messages, with its sign-in command, so a sync needs no interactive agent request. [V1-3](#issue-v1-3-schedule-the-daily-sync-on-the-laptop) runs it on a schedule. The automated path reuses the Version 0.5 workflow unchanged: it skips processed IDs, retrieves every new message in full, analyses it, logs accepted transactions, and preserves uncertain cases for review.
+Add [Gmail API retrieval](inbox-expense-contract.md#gmail-api-retrieval) of new inbox messages and its sign-in command, so one command runs a sync with no agent request. [V1-3](#issue-v1-3-schedule-the-daily-sync-on-the-laptop) runs it on a schedule. The command reuses the Version 0.5 workflow unchanged. It applies the skip filter and the 25-message batch, skips processed IDs, retrieves every new message in full, analyses it, logs accepted transactions, and keeps uncertain and oversized cases for review.
 
 ### Acceptance criteria
 
 - [ ] Gmail access uses only `gmail.readonly`, the minimum read-only scope that retrieves inbox messages and their full content.
-- [ ] OAuth credentials and tokens are stored outside the repository.
-- [ ] A refresh token issued with the In production status still refreshes more than seven days after sign-in.
+- [ ] The sign-in command writes the OAuth token outside the repository, with the file modes in the contract. A sync never opens a browser.
 - [ ] An expired or removed sign-in stops the sync before retrieval with a sign-in error that is not counted against any message.
 - [ ] `snippet` never reaches a run file or log.
 - [ ] One command retrieves and analyses new inbox messages without an agent.
+- [ ] Selection, the skip filter, the 25-message batch, and oversized-message review match the connector sync, and the command reports the same seven `process` groups.
 - [ ] The automated path produces the same decisions and ledger records as the local batch command.
-- [ ] A human verifies an expense, a non-expense, a review item, and the extracted transaction values.
+- [ ] Tests use mocked API responses and sanitized fixtures to cover search paging, a `From` header with a display name, `snippet` removal, an expired sign-in, and a rate-limit error that leaves the message retryable.
 
 ## Issue V1-2 Lock processing runs and stop retrying failing messages
 
@@ -280,7 +282,7 @@ Install a LaunchAgent that runs the V1-1 sync every hour within the [scheduled r
 - [ ] A run starts Ollama when it is down and fails before retrieval when the version is wrong.
 - [ ] A failed or deferred day is continued in the next hour, and a done day is not run again.
 - [ ] Run records and log lines hold no message content and are deleted after 90 days.
-- [ ] The user installs the LaunchAgent, and its scheduled syncs run on real inbox messages for a week.
+- [ ] The user installs the LaunchAgent, and a scheduled sync runs on real inbox messages.
 
 ## Issue V1-4 Report each scheduled sync and open the review list
 
@@ -301,9 +303,48 @@ Show the [notification and dialog](inbox-expense-contract.md#9-scheduled-run) af
 - [ ] The dialog never holds the run lock, and a run that fails before processing shows it at most once a day.
 - [ ] The review page is rewritten after each sync and each review resolution.
 
+## Issue V1-5 Confirm the Gmail sign-in lasts past seven days
+
+**Type:** HITL
+
+**Status:** `in-progress` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24)
+
+**Blocked by:** None - can start immediately
+
+### What to build
+
+Check that a refresh token issued with the In production, unverified status keeps refreshing after the seven days a Testing token lasts, so that the [scheduled sync](MVP.md#scheduled-sync) does not need a weekly sign-in. The sign-in is shared with the job tracker, so the result applies to both projects.
+
+### Acceptance criteria
+
+- [ ] A token issued after the move to In production refreshes successfully more than seven days after it was issued.
+- [ ] The check records only the token's age and whether it refreshed, with no message content or token values.
+- [ ] If the refresh fails, the user decides how the sign-in is renewed, and the MVP and contract are updated before V1-6 starts.
+
+## Issue V1-6 Verify scheduled processing on real inbox messages
+
+**Type:** HITL
+
+**Status:** `needs-triage`
+
+**Blocked by:** V1-3, V1-4, V1-5
+
+### What to build
+
+Let the installed schedule run by itself on real inbox messages, then have the user check its results through the notification, dialog, and review page rather than a chat.
+
+### Acceptance criteria
+
+- [ ] Scheduled syncs run on real inbox messages for a week with no agent request.
+- [ ] A human verifies an expense, a non-expense, a review item, and the extracted transaction values.
+- [ ] The user resolves a review item from the review page beside its Gmail message.
+- [ ] A day with the laptop closed or asleep for at least one window hour is caught up at the next full wake.
+- [ ] The agent-driven `/expense-sync` still works as a fallback during the week, and it exits without doing anything while a scheduled sync holds the lock.
+- [ ] The user records whether Version 1 is complete, with reasons, or what must be revised.
+
 ## Version 1 completion gate
 
-Version 1 is complete when V1-1 to V1-4 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request.
+Version 1 is complete when V1-1 to V1-6 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request.
 
 ## Scope changes
 
