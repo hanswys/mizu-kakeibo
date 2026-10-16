@@ -18,7 +18,7 @@ The setup and commands below apply to the expense project.
 uv sync --extra dev
 ```
 
-The analyser requires Ollama `0.23.1` with the exact `qwen2.5:14b` build named in
+The analyser requires Ollama `0.40.5` with the exact `qwen3.5:4b-q4_K_M` build named in
 the contract. Data files passed to the commands below are private and must remain
 outside version control.
 
@@ -26,11 +26,11 @@ Homebrew and the Ollama desktop app track newer releases, so install the pinned
 command-line build instead (macOS):
 
 ```sh
-mkdir -p ~/.local/opt/ollama-0.23.1 && cd ~/.local/opt/ollama-0.23.1
-curl -fsSL https://github.com/ollama/ollama/releases/download/v0.23.1/ollama-darwin.tgz | tar -xz
-ln -sf ~/.local/opt/ollama-0.23.1/ollama ~/.local/bin/ollama
+mkdir -p ~/.local/opt/ollama-0.40.5 && cd ~/.local/opt/ollama-0.40.5
+curl -fsSL https://github.com/ollama/ollama/releases/download/v0.40.5/ollama-darwin.tgz | tar -xz
+ln -sf ~/.local/opt/ollama-0.40.5/ollama ~/.local/bin/ollama
 ollama serve &            # or run it from a launchd user agent
-ollama pull qwen2.5:14b
+ollama pull qwen3.5:4b-q4_K_M
 ```
 
 The commands refuse to run if the Ollama version or model digest differs from the

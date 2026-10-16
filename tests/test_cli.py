@@ -37,8 +37,8 @@ class FakeOllamaAnalyser:
     def verify_runtime(self):
         return RuntimeMetadata(
             runtime="ollama",
-            runtime_version="0.23.1",
-            model="qwen2.5:14b",
+            runtime_version="0.40.5",
+            model="qwen3.5:4b-q4_K_M",
             model_digest="sha256-test",
             prompt_version="expense-v0.1",
             temperature=0,
@@ -173,7 +173,7 @@ def connector_session(tmp_path, calls) -> str:
 def test_connector_sync_selects_collects_processes_and_links_review_items(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    received = "1791734400000"  # 2026-10-12T00:00:00+08:00
+    received = "1792166400000"  # 2026-10-17T00:00:00+08:00
     old = "1790000000000"  # 2026-09-23, before the sync start
     first = raw_connector_message("1a13f73d4246d612", received)
     second = raw_connector_message("1a13f724be7b45ad", str(int(received) + 1))
@@ -283,11 +283,11 @@ def test_connector_sync_selects_collects_processes_and_links_review_items(
 
     assert cli.main(["search-query"] + storage) == 0
     assert json.loads(capsys.readouterr().out) == {
-        "query": "in:inbox -category:promotions -category:social after:2026/10/11"
+        "query": "in:inbox -category:promotions -category:social after:2026/10/16"
     }
     assert cli.main(["search-query", "--full"] + storage) == 0
     assert json.loads(capsys.readouterr().out) == {
-        "query": "in:inbox -category:promotions -category:social after:2026/10/09"
+        "query": "in:inbox -category:promotions -category:social after:2026/10/15"
     }
 
 

@@ -22,8 +22,8 @@ from mizu_kakeibo.ollama import (
 
 METADATA = RuntimeMetadata(
     runtime="ollama",
-    runtime_version="0.23.1",
-    model="qwen2.5:14b",
+    runtime_version="0.40.5",
+    model="qwen3.5:4b-q4_K_M",
     model_digest="sha256-test",
     prompt_version=PROMPT_VERSION,
     temperature=0,

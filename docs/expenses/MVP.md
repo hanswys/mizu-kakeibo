@@ -41,7 +41,7 @@ Every successfully processed Gmail message ends with one decision:
 
 Version 0 focuses on clear completed expenses. Refunds, reversals, transfers, pending charges, bills, statements, and other policy-dependent cases remain review items; defining their permanent accounting treatment is deferred.
 
-A message that reports no payment by the user is not an expense and does not need review: a failed or declined payment, a cancellation, an exchange-rate or price alert, or a social or account notification. A future or recurring fee, such as the price after a trial ends, is never logged as a completed expense. A confirmation whose paid amount appears only in an attachment goes to review.
+A message that reports no payment by the user is not an expense and does not need review: a failed or declined payment, a cancellation, an exchange-rate or price alert, a shipping or delivery update for an order, or a social or account notification. A future or recurring fee, such as the price after a trial ends, is never logged as a completed expense. A confirmation whose paid amount appears only in an attachment goes to review, and so does an order-placed notice that shows an order total but does not confirm payment, because the order's receipt may arrive separately and must not be logged twice.
 
 The merchant is the business the user paid, named by its brand. When a delivery, ride-hailing, or other app takes the payment, the merchant is the app, not the restaurant, store, or driver.
 
@@ -62,7 +62,7 @@ The authoritative field definitions and invariants live in the [inbox-to-expense
 ### Gmail retrieval
 
 - Search new inbox messages.
-- Start from a fixed date: inbox messages received before 2026-10-10 in Malaysia time are never processed.
+- Start from a fixed date: inbox messages received before 2026-10-16 in Malaysia time are never processed. The user moved the start from 2026-10-10 to 2026-10-16, the day the skip filter and the lighter analyser model were released, so the remaining backlog of earlier messages is not processed; earlier decisions and ledger rows are kept.
 - Process new messages in bounded batches, oldest first; the next sync continues with any that remain.
 - Keep the Gmail message ID as the unique source identifier.
 - Skip processed IDs unless the user explicitly requests re-evaluation.
@@ -81,6 +81,9 @@ The authoritative field definitions and invariants live in the [inbox-to-expense
 - Send a message that is too long for the analyser to read in full to review, rather than leaving it to fail on every sync.
 - Produce structured output that can be validated before anything is persisted.
 - Follow the versioned model, prompt, and runtime configuration in the inbox-to-expense contract.
+- Run light enough that the laptop stays usable during a sync, and release the model's memory soon after the sync ends.
+
+On 2026-10-16 the user set speed and laptop load ahead of small accuracy gains: the analyser must not miss or falsely log expenses in evaluation, but an occasional unnecessary review or merchant-name error is acceptable for now and can be corrected in review. Improving accuracy further is deferred.
 
 ### Personal ledger
 
@@ -106,7 +109,8 @@ Applications that send no email are outside the MVP and may require direct integ
 These improvements wait until the MVP is complete:
 
 - **Oversized messages.** Analyse a message that is too long for the analyser instead of sending it to review.
-- **Sync performance.** Make each sync faster and lighter. The first real sync, on 2026-10-15, took about a minute per message, and most of the messages it analysed were job alerts and promotions. The skip filter above was pulled forward from this work; a smaller analyser model may follow if it keeps the evaluation results.
+- **Sync performance.** Make each sync faster and lighter. The first real sync, on 2026-10-15, took about a minute per message, and most of the messages it analysed were job alerts and promotions. The skip filter and a smaller analyser model were pulled forward from this work on 2026-10-16.
+- **Analyser accuracy.** Reduce unnecessary reviews and merchant-name errors once the end-to-end daily workflow is in use.
 
 ## Out of scope
 
