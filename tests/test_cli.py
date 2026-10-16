@@ -202,7 +202,19 @@ def test_connector_sync_selects_collects_processes_and_links_review_items(
                             "id": "old-thread",
                             "messageCount": 1,
                             "messages": [{"id": "old", "internalDate": old, "labelIds": ["INBOX"]}],
-                        }
+                        },
+                        {
+                            "id": "alert-thread",
+                            "messageCount": 1,
+                            "messages": [
+                                {
+                                    "id": "alert",
+                                    "internalDate": received,
+                                    "labelIds": ["INBOX", "CATEGORY_UPDATES"],
+                                    "sender": "jobalerts-noreply@linkedin.com",
+                                }
+                            ],
+                        },
                     ]
                 },
             ),
@@ -236,6 +248,7 @@ def test_connector_sync_selects_collects_processes_and_links_review_items(
         "already_processed_ids": [],
         "deferred_ids": [second["id"]],
         "excluded_ids": ["old"],
+        "filtered_ids": ["alert"],
         "incomplete_thread_ids": [],
     }
 
@@ -252,6 +265,7 @@ def test_connector_sync_selects_collects_processes_and_links_review_items(
         "not_expense": [],
         "needs_review": [first["id"]],
         "skipped": [],
+        "filtered": ["alert"],
         "failed": [],
         "deferred": [second["id"]],
     }
@@ -268,9 +282,13 @@ def test_connector_sync_selects_collects_processes_and_links_review_items(
     assert replay["already_processed_ids"] == [first["id"]]
 
     assert cli.main(["search-query"] + storage) == 0
-    assert json.loads(capsys.readouterr().out) == {"query": "in:inbox after:2026/10/11"}
+    assert json.loads(capsys.readouterr().out) == {
+        "query": "in:inbox -category:promotions -category:social after:2026/10/11"
+    }
     assert cli.main(["search-query", "--full"] + storage) == 0
-    assert json.loads(capsys.readouterr().out) == {"query": "in:inbox after:2026/10/09"}
+    assert json.loads(capsys.readouterr().out) == {
+        "query": "in:inbox -category:promotions -category:social after:2026/10/09"
+    }
 
 
 def test_collect_raw_fails_when_a_selected_message_was_not_fetched(tmp_path, capsys) -> None:

@@ -74,6 +74,7 @@ def command_process(args: argparse.Namespace) -> int:
         "not_expense": [],
         "needs_review": [],
         "skipped": _id_list(selection, "already_processed_ids"),
+        "filtered": _id_list(selection, "filtered_ids"),
         "failed": [],
         "deferred": _id_list(selection, "deferred_ids"),
     }

@@ -16,7 +16,8 @@ No real email content, identifiers, credentials, or ledger data belong in this d
 ## End-to-end contract
 
 ```text
-Search inbox message IDs
+Search inbox message IDs outside Promotions and Social
+  -> Skip a message from a job-alert sender
   -> Skip an ID already processed
   -> Read the full Gmail message
   -> Normalize it into an inbox-message envelope
@@ -29,7 +30,7 @@ Search inbox message IDs
       -> needs_review: append no ledger row and create a review item
 ```
 
-There is no metadata relevance model, Gmail-label branch, or second analyser in Version 0.
+There is no metadata relevance model, Gmail-label branch, or second analyser in Version 0. The [skip filter](#skip-filter) is a fixed rule applied to search metadata before any message is retrieved.
 
 ## 1. Gmail MCP boundary
 
@@ -118,10 +119,19 @@ Normalization then proceeds unchanged. The job tracker's planned option to prefe
 
 One sync selects new inbox messages from connector searches, fetches each in `RAW` format, and processes the batch. The agent makes the connector calls; the tool reads their results from the agent's own Claude Code session transcript, so message content is never copied by the agent.
 
-- **Search.** `search-query` prints the inbox search, which the agent runs with `search_threads` and the metadata-only view, following page tokens to the end. The search starts at the sync start, or at the newest processed message's received time when that is later, because earlier messages were processed oldest first. Gmail's date operators do not use Malaysia time, so the query's date is one day earlier, and selection applies the exact start. A failed message older than the newest processed one falls outside this search, so a sync after one with failures uses `search-query --full`, which always starts from the sync start.
-- **Select.** `select-new` reads message metadata from the session's `search_threads` and `get_thread` results. A message is eligible when it has the `INBOX` label and an `internalDate` on or after `2026-10-10T00:00:00+08:00`; anything earlier is never processed. Eligible IDs are ordered oldest first and checked against the processed-message store. At most 25 new IDs are selected, which keeps the raw messages a sync adds to the agent's context manageable; the rest are reported as deferred, and a later sync continues with them. A thread whose results list fewer messages than its `messageCount` is reported as incomplete, and `get_thread` must list its messages before the selection is used.
+- **Search.** `search-query` prints the inbox search, which leaves out the [skip filter](#skip-filter)'s Gmail categories. The agent runs it with `search_threads` and the metadata-only view, following page tokens to the end. The search starts at the sync start, or at the newest processed message's received time when that is later, because earlier messages were processed oldest first. Gmail's date operators do not use Malaysia time, so the query's date is one day earlier, and selection applies the exact start. A failed message older than the newest processed one falls outside this search, so a sync after one with failures uses `search-query --full`, which always starts from the sync start.
+- **Select.** `select-new` reads message metadata from the session's `search_threads` and `get_thread` results. A message is eligible when it has the `INBOX` label and an `internalDate` on or after `2026-10-10T00:00:00+08:00`; anything earlier is never processed. Eligible IDs from a job-alert sender, or carrying a skipped category label, are reported as filtered and are neither retrieved nor recorded. The remaining eligible IDs are ordered oldest first and checked against the processed-message store. At most 25 new IDs are selected, which keeps the raw messages a sync adds to the agent's context manageable; the rest are reported as deferred, and a later sync continues with them. A thread whose results list fewer messages than its `messageCount` is reported as incomplete, and `get_thread` must list its messages before the selection is used.
 - **Fetch and collect.** The agent calls `get_message(RAW)` for each selected ID. `collect-raw` finds those responses in the session transcript, inline or in the files Claude Code saves for results too large to show inline, and writes them as one batch. It reads only results of Gmail connector tools, and fails, writing what it found, when any selected ID is missing.
-- **Process.** `process` with the selection reports the IDs of the run in six groups: `expense`, `not_expense`, and `needs_review` for successful analyses; `skipped` for IDs already processed, at selection or at persistence; `failed` for operational failures, which remain retryable; and `deferred` for new IDs beyond the batch limit.
+- **Process.** `process` with the selection reports the IDs of the run in seven groups: `expense`, `not_expense`, and `needs_review` for successful analyses; `skipped` for IDs already processed, at selection or at persistence; `filtered` for IDs removed by the skip filter at selection; `failed` for operational failures, which remain retryable; and `deferred` for new IDs beyond the batch limit.
+
+### Skip filter
+
+The filter applies only to the expense sync. It reads search metadata, so a filtered message is never retrieved or analysed.
+
+- **Gmail categories.** The search adds `-category:promotions -category:social`. Selection also filters any message whose `labelIds` include `CATEGORY_PROMOTIONS` or `CATEGORY_SOCIAL`, which covers thread messages that a search lists alongside a match.
+- **Job-alert senders.** Selection filters a message whose sender address, parsed from the metadata `sender`, is `jobalerts-noreply@linkedin.com` or `jobs-noreply@linkedin.com`, or whose domain is `jobstreet.com`, `jobs2web.com`, `glassdoor.com`, `builtin.com`, or `myvisajobs.com`, or a subdomain of one. Other LinkedIn senders are not filtered, so a LinkedIn purchase receipt still reaches the analyser.
+
+Filtered messages are not recorded in the processed-message store. Because the search starts from the newest processed message, an older filtered message drops out of later searches; one inside the search window is filtered again at no model cost. A change to the filter is a product change that starts in the [MVP](MVP.md#core-workflow).
 
 Reading the transcript depends on Claude Code's private file layout, which may change without notice. It is a stopgap for the agent-driven sync; Version 1 replaces the agent and transcript with read-only Gmail API access.
 
@@ -410,7 +420,7 @@ The full report may contain Gmail message IDs and must stay private. The printed
 
 ## Deferred optimizations
 
-A metadata-only relevance gate and a custom `Finance Tracker` label may be evaluated after the full-message baseline exists. Each would require its own contract and evidence that it does not hide real expenses. Neither is part of Version 0.
+A metadata-only relevance gate and a custom `Finance Tracker` label may be evaluated after the full-message baseline exists. Each would require its own contract and evidence that it does not hide real expenses. Neither is part of Version 0. The [skip filter](#skip-filter) is the one fixed-rule gate adopted so far.
 
 Restricting retrieval to Gmail's Purchases category is such a gate. The V0-2 dataset records Purchases membership so its recall on expected expenses and review items can be measured on the same labelled set. Recording it does not adopt the gate; adoption is a product change that starts in the [MVP](MVP.md).
 

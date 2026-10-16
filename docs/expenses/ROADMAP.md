@@ -16,6 +16,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V0-2 | Evaluate the expense analyser | HITL | V0-1 |
 | V0.5-1 | Build one repeatable local inbox run | AFK | V0-2 proceed gate |
 | V0.5-2 | Connect and approve the agent-driven sync | HITL | V0.5-1 |
+| V0.5-3 | Skip promotions, social, and job alerts before analysis | AFK | V0.5-1 |
 | V1-1 | Automate new inbox processing | HITL | V0.5-2 proceed gate |
 
 # Milestone Version 0 Prove the Idea
@@ -142,9 +143,29 @@ Connect Gmail MCP retrieval to the local batch command and verify the workflow w
 - [ ] No credentials, real message contents, ledger data, or database files enter version control.
 - [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
 
+## Issue V0.5-3 Skip promotions, social, and job alerts before analysis
+
+**Type:** AFK
+
+**Status:** `in-progress` (built on 2026-10-16 after the first full sync showed most analysed messages were promotions and job alerts; it applies from the next sync)
+
+**Blocked by:** V0.5-1
+
+### What to build
+
+Apply the [skip filter](inbox-expense-contract.md#skip-filter) in the connector sync so that messages in Gmail's Promotions and Social categories, and messages from job-alert senders, are never retrieved or analysed.
+
+### Acceptance criteria
+
+- [x] The sync search leaves out Promotions and Social.
+- [x] Selection filters skipped-category labels and job-alert senders, and reports them as `filtered`.
+- [x] Filtered messages are not recorded in the processed-message store.
+- [x] Tests cover each filter rule, including a LinkedIn sender that is not a job alert.
+- [ ] The next real sync reports its filtered messages, and the user confirms none was an expense.
+
 ## Version 0.5 completion gate
 
-Version 0.5 is complete when both issues meet their acceptance criteria. Version 1 begins only after the real agent-driven sync records `proceed`.
+Version 0.5 is complete when all three issues meet their acceptance criteria. Version 1 begins only after the real agent-driven sync records `proceed`.
 
 # Milestone Version 1 Automate Inbox Processing
 
