@@ -267,7 +267,7 @@ Add the [run lock](inbox-expense-contract.md#run-lock) to every processing comma
 
 **Type:** HITL
 
-**Status:** `in-progress` (triaged and built on 2026-10-17 as `scheduled-sync` and `launch-agent`, and tested with mocked Gmail, runtime, and macOS state; waiting for the user to install the LaunchAgent. The user chose to run the schedule from a `uv tool install` copy of `main`, updated on purpose, rather than from a checkout, and confirmed that only a scheduled run marks the day done, so a manual `sync` does not stop the next scheduled hour. The design is otherwise the contract's.)
+**Status:** `complete` (triaged and built on 2026-10-17 as `scheduled-sync` and `launch-agent`, and tested with mocked Gmail, runtime, and macOS state. The user installed the LaunchAgent that day, and its first scheduled run, at 14:00 in a full wake on mains power, searched the live inbox through the Gmail API with the runtime already up. It skipped 15 messages already processed by a manual `sync` earlier that hour and filtered 19, so no message was analysed. It exited successfully, marked the day done, and wrote a run record and log line with message IDs and counts only. The user accepted this as complete, because analysis is the same code as the manual `sync`, and [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages) checks a week of scheduled analysis. The user chose to run the schedule from a `uv tool install` copy of `main`, updated on purpose, rather than from a checkout, and confirmed that only a scheduled run marks the day done, so a manual `sync` does not stop the next scheduled hour. The design is otherwise the contract's.)
 
 **Blocked by:** V1-1, V1-2
 
@@ -282,7 +282,7 @@ Install a LaunchAgent that runs the V1-1 sync every hour within the [scheduled r
 - [x] A run starts Ollama when it is down and fails before retrieval when the version is wrong.
 - [x] A failed or deferred day is continued in the next hour, and a done day is not run again. A run after one with failed messages searches from the sync start, so they are retried.
 - [x] Run records and log lines hold no message content and are deleted after 90 days.
-- [ ] The user installs the LaunchAgent, and a scheduled sync runs on real inbox messages.
+- [x] The user installs the LaunchAgent, and a scheduled sync runs on real inbox messages.
 
 ## Issue V1-4 Report each scheduled sync and open the review list
 
