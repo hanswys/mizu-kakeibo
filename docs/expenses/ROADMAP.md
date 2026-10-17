@@ -224,7 +224,7 @@ Remove the need for an interactive agent request. A scheduled personal service r
 
 **Type:** AFK
 
-**Status:** `complete` (built on 2026-10-16 as `gmail-sign-in` and `sync`, and tested with mocked Gmail responses only; it has not yet run on the live inbox, which [V1-3](#issue-v1-3-schedule-the-daily-sync-on-the-laptop) first does. Triaged earlier that day: the sign-in lifetime check moved to [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) and the human check to [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages). A [Gmail API spike](gmail-api-spike-2026-10-16.md) the same day confirmed the scope and showed that search, `raw`, and envelopes match the connector.)
+**Status:** `complete` (built on 2026-10-16 as `gmail-sign-in` and `sync`, and tested with mocked Gmail responses. The first live `sync`, run by hand on 2026-10-17 with the existing sign-in, processed 10 new messages as non-expenses, skipped 7 already processed by the agent-driven sync, and filtered 20 job alerts, with no failures or deferred messages. A check of each sender and subject found every decision correct, and every filtered sender was a job board. Triaged earlier that day: the sign-in lifetime check moved to [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) and the human check to [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages). A [Gmail API spike](gmail-api-spike-2026-10-16.md) the same day confirmed the scope and showed that search, `raw`, and envelopes match the connector.)
 
 **Blocked by:** V0.5-2 with a `proceed` decision
 
