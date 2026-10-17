@@ -69,7 +69,7 @@ applied -> viewed -> interview -> offered | rejected
 - An update to a later status replaces the current status.
 - An update to the same status, or to an earlier status, is linked to the application without changing its status. This covers duplicate emails and emails that arrive out of order.
 - An `applied` update for an application whose status is `rejected` reopens it as `applied`, because the user applied to the same role again. The earlier emails stay linked.
-- An `offered` update for a `rejected` application, or a `rejected` update for an `offered` application, is contradictory. The email goes to review and the application keeps its status.
+- An `offered` update for a `rejected` application, or a `rejected` update for an `offered` application, is contradictory. The email goes to review and the application keeps its status. If the user confirms the email in review, the application takes the confirmed status, as the user chose on 2026-10-17.
 
 ## Application identity
 
@@ -79,7 +79,7 @@ The analyser extracts a clean company name and job title even when an email comb
 
 - Company names and job titles are compared after deterministic normalization, such as case, whitespace, punctuation, and legal-form variants like `Sdn Bhd` and `Sdn. Bhd.`. The contract defines the exact rules.
 - A status update whose normalized company and job title match an existing application, directly or through a confirmed alias, updates that application.
-- A status update with no exact match but a likely match, such as the same company with a job title that contains or is contained in an existing one, goes to review with the likely application suggested.
+- A status update with no exact match but a likely match goes to review with the likely application suggested. A likely match has the same company with a job title that contains or is contained in the existing one, or the same job title with a company name that contains or is contained in the existing one, such as a group name around the brand, as the user chose on 2026-10-17.
 - A status update with no exact or likely match creates an application, whatever status it reports. An application first seen as `rejected` is still recorded.
 - An email missing either the company or the job title is never matched or used to create an application. It goes to review.
 
@@ -129,7 +129,7 @@ The first run processes inbox messages received on or after 2026-04-14, six mont
 ### Review
 
 - Show the source email beside the proposed decision, extracted values, and any suggested application.
-- Allow the user to accept the proposal, correct company, job title, or status, attach the email to the suggested or another application, or mark the email as not an application.
+- Allow the user to accept the proposal, correct company, job title, or status, attach the email to the suggested application, another application, or a new one, or mark the email as not an application.
 - Save a confirmed name variant as an alias of the application.
 - Apply a resolved status update through the same matching and status change rules.
 - Preserve the Gmail message ID and the original decision after correction.

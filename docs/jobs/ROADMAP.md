@@ -52,7 +52,7 @@ Sampling also showed that interview invitations and most outcomes come from empl
 
 **Type:** HITL
 
-**Status:** `in-progress` (product decisions recorded in the MVP; contract sections not yet written)
+**Status:** `complete` (2026-10-17; the [contract](job-tracker-contract.md) defines retrieval, the analyser on the expense app's pinned model, normalization, matching, status changes, review, persistence, and evaluation)
 
 **Blocked by:** J0-1
 
@@ -64,11 +64,11 @@ Resolve the MVP's open questions using the sampled layouts, update the MVP, then
 
 - [x] The user decides allowed status changes and handling of out-of-order, duplicate, and contradictory emails, and the MVP records the decision.
 - [x] The user decides how near-duplicate company names and job titles are handled, and the MVP records the decision.
-- [ ] The contract defines the analyser output with only `status_update`, `not_application`, and `needs_review`.
-- [ ] The contract defines deterministic matching on normalized company and job title, the likely-match rule that sends an email to review, and confirmed aliases.
-- [ ] The contract defines the status change rules, including reopening after a re-application.
-- [ ] The contract references the expense contract's `inbox-message/v0` envelope instead of copying it.
-- [ ] The contract defines a job-tracker database separate from the expense store.
+- [x] The contract defines the analyser output with only `status_update`, `not_application`, and `needs_review`.
+- [x] The contract defines deterministic matching on normalized company and job title, the likely-match rule that sends an email to review, and confirmed aliases.
+- [x] The contract defines the status change rules, including reopening after a re-application.
+- [x] The contract references the expense contract's `inbox-message/v0` envelope instead of copying it.
+- [x] The contract defines a job-tracker database separate from the expense store.
 
 ## Issue J0-3 Read connector messages through the shared normalizer
 
