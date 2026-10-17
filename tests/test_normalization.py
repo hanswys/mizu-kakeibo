@@ -298,3 +298,80 @@ def test_connector_raw_message_falls_back_to_date_header() -> None:
 def test_invalid_connector_raw_message_fails() -> None:
     with pytest.raises(NormalizationError, match="base64url"):
         normalize_gmail_message(connector_raw("", raw="a"))
+
+
+STUB_FOOTER = (
+    "This email was intended for Placeholder Candidate (Placeholder headline).\n"
+    "Learn why we included this: https://www.linkedin.example.invalid/help?trk=1234567890\n"
+    "You are receiving notification emails about your job applications.\n"
+    "Unsubscribe: https://www.linkedin.example.invalid/unsub?trk=1234567890\n"
+    "Help: https://www.linkedin.example.invalid/help?trk=1234567890\n"
+    "© 2026 Example Network Corporation, 1 Placeholder Street, Example City."
+)
+
+RAW_STUB_REJECTION = f"""\
+From: Example Network <jobs-noreply@linkedin.example.invalid>
+Subject: Your application to Placeholder Engineer at Example Corp
+Date: Tue, 06 Oct 2026 09:30:00 +0800
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt"
+
+--alt
+Content-Type: text/plain; charset="utf-8"
+
+Your update from Example Corp
+
+{STUB_FOOTER}
+--alt
+Content-Type: text/html; charset="utf-8"
+
+<h1>Your update from Example Corp</h1>
+<table><tr><td>Placeholder Engineer</td><td>Example Corp</td></tr></table>
+<p>Unfortunately, we will not be moving forward with your application.</p>
+<p>{STUB_FOOTER}</p>
+--alt--
+"""
+
+
+def test_prefer_html_reads_title_and_status_from_stub_layout() -> None:
+    result = normalize_gmail_message(connector_raw(RAW_STUB_REJECTION), prefer_html=True)
+
+    assert "Placeholder Engineer\tExample Corp" in result.content.text
+    assert "will not be moving forward" in result.content.text
+    assert result.content.source_type == "html_converted"
+
+
+def test_stub_layout_is_unchanged_with_prefer_html_off() -> None:
+    plain = f"Your update from Example Corp\n\n{STUB_FOOTER}"
+    default = normalize_gmail_message(connector_raw(RAW_STUB_REJECTION))
+    off = normalize_gmail_message(connector_raw(RAW_STUB_REJECTION), prefer_html=False)
+
+    assert off == default
+    assert default.content.text == plain
+    assert default.content.source_type == "text_plain"
+
+
+def test_prefer_html_falls_back_to_plain_text_when_html_is_empty() -> None:
+    payload = alternative("Plain version", "<p hidden>Hidden only</p><style>p {}</style>")
+    result = normalize_gmail_message(gmail(payload), prefer_html=True)
+    assert result.content.text == "Plain version"
+    assert result.content.source_type == "text_plain"
+
+
+def test_prefer_html_reads_html_only_alternative() -> None:
+    payload = alternative("", "<p>HTML only</p>")
+    result = normalize_gmail_message(gmail(payload), prefer_html=True)
+    assert result.content.text == "HTML only"
+    assert result.content.source_type == "html_converted"
+
+
+def test_prefer_html_applies_to_nested_alternative_and_keeps_mixed_parts() -> None:
+    payload = {
+        "mime_type": "multipart/mixed",
+        "headers": [],
+        "body": {"content": None},
+        "parts": [alternative("Plain version", "<p>HTML version</p>"), leaf("text/plain", "Note")],
+    }
+    result = normalize_gmail_message(gmail(payload), prefer_html=True)
+    assert result.content.text == "HTML version\n\nNote"
+    assert result.content.source_type == "mixed_text"

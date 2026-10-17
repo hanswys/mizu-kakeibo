@@ -187,18 +187,24 @@ def _word_count(fragments: list[tuple[str, str]]) -> int:
     return sum(len(re.findall(r"\w+", _LINK.sub(" ", text))) for text, _ in fragments)
 
 
-def _extract_text(part: dict[str, Any]) -> list[tuple[str, str]]:
+def _extract_text(part: dict[str, Any], *, prefer_html: bool) -> list[tuple[str, str]]:
     mime_type = str(part.get("mime_type", "")).split(";", 1)[0].strip().lower()
     children = part.get("parts")
     if mime_type == "multipart/alternative" and isinstance(children, list):
-        choices = [_extract_text(child) for child in children if isinstance(child, dict)]
+        choices = [
+            _extract_text(child, prefer_html=prefer_html)
+            for child in children
+            if isinstance(child, dict)
+        ]
         usable = [choice for choice in choices if choice]
         if not usable:
             return []
+        html = next((c for c in usable if any(kind == "html_converted" for _, kind in c)), None)
+        if prefer_html and html is not None:
+            return html
         plain = next((c for c in usable if all(kind == "text_plain" for _, kind in c)), None)
         if plain is None:
             return usable[0]
-        html = next((c for c in usable if any(kind == "html_converted" for _, kind in c)), None)
         plain_words = _word_count(plain)
         if html is not None and plain_words < STUB_WORD_LIMIT:
             stub_ratio = _word_count(html) / max(plain_words, 1)
@@ -208,7 +214,7 @@ def _extract_text(part: dict[str, Any]) -> list[tuple[str, str]]:
         result: list[tuple[str, str]] = []
         for child in children:
             if isinstance(child, dict):
-                result.extend(_extract_text(child))
+                result.extend(_extract_text(child, prefer_html=prefer_html))
         return result
     leaf = _leaf_text(part)
     return [leaf] if leaf else []
@@ -317,8 +323,12 @@ def gmail_raw_to_full_message(message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def normalize_gmail_message(message: dict[str, Any]) -> InboxMessage:
-    """Convert one Gmail full-message or connector `RAW` response into the v0 envelope."""
+def normalize_gmail_message(message: dict[str, Any], *, prefer_html: bool = False) -> InboxMessage:
+    """Convert one Gmail full-message or connector `RAW` response into the v0 envelope.
+
+    `prefer_html` makes every `multipart/alternative` use its non-empty HTML alternative over
+    plain text. The job tracker turns it on; the expense app leaves it off.
+    """
     if not isinstance(message, dict):
         raise NormalizationError("Gmail message must be a JSON object")
     if message.get("payload") is None and isinstance(message.get("raw"), str):
@@ -334,7 +344,7 @@ def normalize_gmail_message(message: dict[str, Any]) -> InboxMessage:
         headers = []
     valid_headers = [header for header in headers if isinstance(header, dict)]
 
-    fragments = _extract_text(payload)
+    fragments = _extract_text(payload, prefer_html=prefer_html)
     normalized_fragments = []
     for fragment, kind in fragments:
         normalized = _normalize_text(fragment)
