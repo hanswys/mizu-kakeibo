@@ -288,7 +288,7 @@ Install a LaunchAgent that runs the V1-1 sync every hour within the [scheduled r
 
 **Type:** AFK
 
-**Status:** `in-progress` (triaged on 2026-10-17. A [follow-up spike](scheduler-spike-2026-10-16.md#dialogs-after-the-run-exits-2026-10-17) found that a dialog left as an ordinary child of the run is killed when the run exits, and one the run waits for would hold the next hour, so the dialog runs in a new session and the LaunchAgent is unchanged. The user chose that a run failing before processing shows only its dialog, at most once a day, with no notification; that every sync, `process`, and review resolution rewrites the review page, while only a scheduled run notifies; and the notification and dialog wording now in the [contract](inbox-expense-contract.md#9-scheduled-run).)
+**Status:** `complete` (triaged and built on 2026-10-17, and tested with mocked macOS commands. A [follow-up spike](scheduler-spike-2026-10-16.md#dialogs-after-the-run-exits-2026-10-17) found that a dialog left as an ordinary child of the run is killed when the run exits, and one the run waits for would hold the next hour, so the dialog runs in a new session and the LaunchAgent is unchanged. The user chose that a run failing before processing shows only its dialog, at most once a day, with no notification; that every sync, `process`, and review resolution rewrites the review page, while only a scheduled run notifies; and the notification and dialog wording now in the [contract](inbox-expense-contract.md#9-scheduled-run). After the user installed it, a launchd run started by hand at 01:38 on 2026-10-18 analysed an expense and a non-expense, recorded a notification and no dialog, and wrote the review page. Because it had no review item, the review dialog was then shown from the installed copy without a sync, and the user opened the page from it. The user accepted V1-4 as complete; [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages) checks a week of real notifications and dialogs.)
 
 **Blocked by:** V1-3
 
@@ -298,11 +298,11 @@ Show the [notification and dialog](inbox-expense-contract.md#9-scheduled-run) af
 
 ### Acceptance criteria
 
-- [ ] A scheduled sync that processed or failed a message notifies its counts; a sync with nothing new, and a run stopped by the lock or a gate, is silent.
-- [ ] Review items or failures also show a dialog whose `Open review list` button opens the review page.
-- [ ] The dialog is shown after the lock is released and does not hold the next run, and a run that fails before processing shows its failure dialog at most once a day, with no notification.
-- [ ] The review page is rewritten after each sync, `process`, and review resolution, with escaped values and no message content.
-- [ ] The user sees a real notification and dialog after a scheduled sync and opens the review page from the dialog.
+- [x] A scheduled sync that processed or failed a message notifies its counts; a sync with nothing new, and a run stopped by the lock or a gate, is silent.
+- [x] Review items or failures also show a dialog whose `Open review list` button opens the review page.
+- [x] The dialog is shown after the lock is released and does not hold the next run, and a run that fails before processing shows its failure dialog at most once a day, with no notification.
+- [x] The review page is rewritten after each sync, `process`, and review resolution, with escaped values and no message content.
+- [x] The user sees a real notification and dialog after a scheduled sync and opens the review page from the dialog.
 
 ## Issue V1-5 Confirm the Gmail sign-in lasts past seven days
 
