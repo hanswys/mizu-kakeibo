@@ -87,6 +87,41 @@ with failed messages, and `--limit N` for a smaller batch. When the sign-in has
 expired or been removed, it stops before reading Gmail and asks you to sign in
 again.
 
+### Scheduled sync
+
+The LaunchAgent `com.mizu-kakeibo.sync` runs `scheduled-sync` at minute 0 of each
+hour from 08:00 to 23:00, as described in the contract's scheduled run section. It
+runs a copy installed with `uv tool install`, never a checkout, so install it from
+an up-to-date `main`:
+
+```sh
+git -C ~/conductor/repos/mizu-kakeibo pull --ff-only
+uv tool install --reinstall ~/conductor/repos/mizu-kakeibo
+~/.local/bin/mizu-kakeibo launch-agent \
+  --database ~/mizu-kakeibo-private/live/kakeibo.sqlite3 \
+  --ledger ~/mizu-kakeibo-private/live/ledger.csv \
+  > ~/Library/LaunchAgents/com.mizu-kakeibo.sync.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.mizu-kakeibo.sync.plist
+```
+
+To update it later, pull `main` and run the `uv tool install --reinstall` line
+again; the LaunchAgent does not change. Each run appends one line to
+`~/mizu-kakeibo-private/live/scheduled.log`, and a run that passes the gates writes
+`run.json` in its own directory under `runs/`. To run it now instead of waiting for
+the hour:
+
+```sh
+launchctl kickstart gui/$(id -u)/com.mizu-kakeibo.sync
+```
+
+To remove it:
+
+```sh
+launchctl bootout gui/$(id -u)/com.mizu-kakeibo.sync
+rm ~/Library/LaunchAgents/com.mizu-kakeibo.sync.plist
+uv tool uninstall mizu-kakeibo
+```
+
 ### Individual steps
 
 Normalize one Gmail MCP `read_email(format="full")` response or claude.ai Gmail
