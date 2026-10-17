@@ -111,6 +111,8 @@ Version 1 replaces the agent request with a daily sync that runs by itself on th
 - Never run two syncs at once. A sync that finds another one running, scheduled or started from chat, exits without doing anything.
 - Send a message to review after its analysis fails in three syncs, instead of retrying it forever.
 - After a sync that processed or failed any message, show a notification with the counts of expenses, review items, and failures. When there are review items or failures, also show a dialog with an "Open review list" button, which opens a private page listing each review item with its Gmail link. A sync with nothing new stays silent.
+- When a sync stops before reading any message, because the Gmail sign-in, the analyser, or the Gmail search failed, show a dialog that says what failed, and for the sign-in how to sign in again, at most once a day and with no notification. The user chose this on 2026-10-17, so a problem lasting several hours does not notify every hour.
+- Keep the review page current after every sync, scheduled or manual, and after each review resolution. Only a scheduled sync shows the notification and dialog.
 - Keep a private record of each sync's message IDs, counts, and errors for 90 days, never message content.
 - Keep the agent-driven sync as a manual fallback.
 

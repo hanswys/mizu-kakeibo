@@ -8,7 +8,7 @@ import shutil
 import subprocess
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -34,6 +34,47 @@ RUN_RECORD = "run.json"
 RUN_NAME_FORMAT = "%Y%m%d-%H%M%S"
 _RUN_NAME = re.compile(r"^(\d{8}-\d{6})(?:-\d+)?$")
 GROUPS = ("expense", "not_expense", "needs_review", "skipped", "filtered", "failed", "deferred")
+ANALYSED = ("expense", "not_expense", "needs_review", "failed")
+OSASCRIPT = "/usr/bin/osascript"
+TITLE = "Mizu Kakeibo"
+DIALOG_SECONDS = 3600
+# Every value reaches osascript as an argument, never as script text.
+NOTIFICATION_SCRIPT = "\n".join(
+    [
+        "on run argv",
+        "display notification (item 3 of argv) with title (item 1 of argv)"
+        " subtitle (item 2 of argv)",
+        "end run",
+    ]
+)
+REVIEW_DIALOG_SCRIPT = "\n".join(
+    [
+        "on run argv",
+        "set reply to display dialog (item 2 of argv) with title (item 1 of argv)"
+        ' buttons {"Dismiss", "Open review list"} default button "Open review list"'
+        " giving up after (item 3 of argv as integer)",
+        'if button returned of reply is "Open review list" then'
+        ' do shell script "/usr/bin/open " & quoted form of (item 4 of argv)',
+        "end run",
+    ]
+)
+FAILURE_DIALOG_SCRIPT = "\n".join(
+    [
+        "on run argv",
+        "display dialog (item 2 of argv) with title (item 1 of argv)"
+        ' buttons {"Dismiss"} default button "Dismiss" with icon caution'
+        " giving up after (item 3 of argv as integer)",
+        "end run",
+    ]
+)
+FAILURE_DIALOGS = {
+    "sign_in": "The sync can't read Gmail because the sign-in has expired or was removed. "
+    'Run "mizu-kakeibo gmail-sign-in" in Terminal.',
+    "runtime": "The sync couldn't start the analyser (Ollama). It will try again next hour.",
+    "retrieval": "The sync couldn't search Gmail. It will try again next hour.",
+    "unexpected": "The sync stopped with an unexpected error. "
+    "The details are in launchd.err.log beside the database.",
+}
 
 
 @dataclass(frozen=True)
@@ -158,6 +199,34 @@ class System:
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)
 
+    def notify(self, subtitle: str, text: str) -> None:
+        with suppress(OSError, subprocess.SubprocessError):
+            subprocess.run(
+                [OSASCRIPT, "-e", NOTIFICATION_SCRIPT, TITLE, subtitle, text],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+
+    def show_dialog(self, text: str, review_page: Path | None) -> None:
+        """Show a dialog without waiting for it.
+
+        launchd kills a job's remaining process group when the job exits, and starts no
+        new instance while it runs, so the dialog gets its own session and outlives the run.
+        """
+        script = FAILURE_DIALOG_SCRIPT if review_page is None else REVIEW_DIALOG_SCRIPT
+        arguments = [TITLE, text, str(DIALOG_SECONDS)]
+        if review_page is not None:
+            arguments.append(str(review_page))
+        with suppress(OSError):
+            subprocess.Popen(
+                [OSASCRIPT, "-e", script, *arguments],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+
 
 @dataclass
 class RuntimeStart:
@@ -222,6 +291,37 @@ def day_done(runs: Path, today: datetime) -> bool:
         started.date() == today.date() and record.get("day_done") is True
         for started, record in _records(runs)
     )
+
+
+def failure_dialog_shown(runs: Path, today: datetime) -> bool:
+    return any(
+        started.date() == today.date() and record.get("dialog") == "failure"
+        for started, record in _records(runs)
+    )
+
+
+def _count(count: int, noun: str) -> str:
+    return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
+def notification_text(counts: dict[str, int]) -> tuple[str, str]:
+    """Return a notification's subtitle and text from a run's counts."""
+    checked = sum(counts[group] for group in ANALYSED)
+    return (
+        f"Checked {_count(checked, 'new message')}",
+        f"{_count(counts['expense'], 'expense')} · {counts['needs_review']} to review · "
+        f"{counts['failed']} failed",
+    )
+
+
+def review_dialog_text(counts: dict[str, int]) -> str:
+    text = (
+        f"Sync finished: {_count(counts['expense'], 'expense')}, "
+        f"{counts['needs_review']} to review, {counts['failed']} failed."
+    )
+    if counts["failed"]:
+        text += " Failed messages are retried next hour."
+    return text
 
 
 def needs_full_search(runs: Path) -> bool:
@@ -299,13 +399,25 @@ def _now() -> datetime:
     return datetime.now(MALAYSIA)
 
 
+@dataclass(frozen=True)
+class RunResult:
+    status: int
+    record: dict[str, Any] | None = None
+    unexpected: BaseException | None = None
+
+
 def scheduled_sync(
-    database: Path, sync: Callable[[bool, Callable[[], None]], SyncReport], *, system: System
+    database: Path,
+    sync: Callable[[bool, Callable[[], None]], SyncReport],
+    *,
+    system: System,
+    write_review_page: Callable[[], Path],
 ) -> int:
-    """Run one scheduled sync behind the run lock and gates, and record it.
+    """Run one scheduled sync behind the run lock and gates, record it, then report it.
 
     `sync(full, before_runtime)` runs the Gmail API sync and calls `before_runtime` after
-    the sign-in check and before the runtime check.
+    the sign-in check and before the runtime check. The review page, notification, and
+    dialog come after the lock is released.
     """
     live = Path(database).parent
     runs, log = live / "runs", live / "scheduled.log"
@@ -313,11 +425,27 @@ def scheduled_sync(
     trigger = "launchd" if os.environ.get("XPC_SERVICE_NAME") == SYNC_LABEL else "command"
     try:
         with run_lock(database):
-            return _locked_run(runs, log, started, trigger, sync, system)
+            result = _locked_run(runs, log, started, trigger, sync, system)
     except RunLockHeldError as error:
         holder = (error.holder or {}).get("pid", "unknown")
         _append_log(log, started, {"trigger": trigger, "outcome": "locked", "holder_pid": holder})
         return 0
+    if result.record is not None:
+        _report(result.record, system, write_review_page)
+    if result.unexpected is not None:
+        raise result.unexpected
+    return result.status
+
+
+def _report(record: dict[str, Any], system: System, write_review_page: Callable[[], Path]) -> None:
+    counts = record["counts"]
+    page = None if counts is None else write_review_page()
+    if record["notification"]:
+        system.notify(*notification_text(counts))
+    if record["dialog"] == "review":
+        system.show_dialog(review_dialog_text(counts), page)
+    elif record["dialog"] == "failure":
+        system.show_dialog(FAILURE_DIALOGS[record["failed_stage"]], None)
 
 
 def _locked_run(
@@ -327,12 +455,12 @@ def _locked_run(
     trigger: str,
     sync: Callable[[bool, Callable[[], None]], SyncReport],
     system: System,
-) -> int:
+) -> RunResult:
     delete_old_records(runs, log, started)
     base: dict[str, Any] = {"trigger": trigger}
     if day_done(runs, started):
         _append_log(log, started, {**base, "outcome": "done_today"})
-        return 0
+        return RunResult(0)
     wake = system.wake_state()
     if not wake.full:
         graphics = None if wake.capabilities is None else "Graphics" in wake.capabilities
@@ -346,7 +474,7 @@ def _locked_run(
                 "graphics": _yes_no(graphics),
             },
         )
-        return 0
+        return RunResult(0)
     power = system.power_state()
     if not power.sufficient:
         percent = "unknown" if power.battery_percent is None else f"{power.battery_percent}%"
@@ -360,7 +488,7 @@ def _locked_run(
                 "battery": percent,
             },
         )
-        return 0
+        return RunResult(0)
 
     full = needs_full_search(runs)
     runtime = RuntimeStart()
@@ -393,6 +521,13 @@ def _locked_run(
         }
     )
     done = groups is not None and not groups["failed"] and not groups["deferred"]
+    counts = None if groups is None else {group: len(ids) for group, ids in groups.items()}
+    if counts is None:
+        notification = False
+        dialog = None if failure_dialog_shown(runs, started) else "failure"
+    else:
+        notification = any(counts[group] for group in ANALYSED)
+        dialog = "review" if counts["needs_review"] or counts["failed"] else None
     record = {
         "trigger": trigger,
         "started_at": started.isoformat(timespec="seconds"),
@@ -410,9 +545,11 @@ def _locked_run(
         "failed_stage": failed_stage,
         "error": None if error is None else sanitized_error(error),
         "groups": groups,
-        "counts": None if groups is None else {group: len(ids) for group, ids in groups.items()},
+        "counts": counts,
         "message_errors": message_errors,
         "day_done": done,
+        "notification": notification,
+        "dialog": dialog,
     }
     directory = _new_run_directory(runs, started)
     _write_private(directory / RUN_RECORD, json.dumps(record, indent=2) + "\n")
@@ -424,9 +561,7 @@ def _locked_run(
         fields.update(record["counts"])
         fields["day_done"] = _yes_no(done)
     _append_log(log, started, fields)
-    if unexpected is not None:
-        raise unexpected
-    return 1 if groups is None or groups["failed"] else 0
+    return RunResult(1 if groups is None or groups["failed"] else 0, record, unexpected)
 
 
 def launch_agent(program: Path, database: Path, ledger: Path, gmail_directory: Path) -> bytes:
