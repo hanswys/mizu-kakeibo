@@ -326,7 +326,7 @@ Check that a refresh token issued with the In production, unverified status keep
 
 **Type:** HITL
 
-**Status:** `in-progress` (triaged on 2026-10-18. The user chose to end the check when every item below has been seen over at least three days of scheduled syncs, instead of after a fixed week, because the done-today gate leaves only one or two syncs a day and most items can be set up on purpose. It started on 2026-10-18 alongside [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days), which must pass before V1-6 is complete.)
+**Status:** `in-progress` (triaged on 2026-10-18. The user chose to end the check when every item below has been seen over at least three days of scheduled syncs, instead of after a fixed week, because the done-today gate leaves only one or two syncs a day and most items can be set up on purpose. It started on 2026-10-18 alongside [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days), which must pass before V1-6 is complete. Progress on 2026-10-18: the 01:38 scheduled run logged an expense and a non-expense whose decisions and values were checked against each message's sender, subject, and receipt total, pending the user's confirmation. An agent-driven `/expense-sync` that night searched and selected correctly and found nothing new, and its `process` step reported `locked` and recorded nothing while a stand-in process held the run lock; an overlap with a real scheduled sync is still to be seen.)
 
 **Blocked by:** V1-3, V1-4; completion also needs V1-5
 
