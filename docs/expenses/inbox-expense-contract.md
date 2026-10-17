@@ -113,7 +113,7 @@ The adapter converts a `RAW` response into the full-message shape above before n
 - A `text/plain` or `text/html` leaf that is not an attachment has its transfer encoding and charset decoded into `body.content`. An unknown charset falls back to UTF-8, and undecodable bytes are replaced.
 - Every other part, and every attachment, has null `body.content`. `base64_url_content` and `attachment_id` are always null, so attachment bytes never reach the normalizer.
 
-Normalization then proceeds unchanged. The job tracker's planned option to prefer the HTML alternative is not yet part of the adapter; see its [J0-3](../jobs/ROADMAP.md#issue-j0-3-read-connector-messages-through-the-shared-normalizer).
+Normalization then proceeds unchanged. The adapter's option to prefer the HTML alternative is described in [normalization rule 2](#2-normalized-inbox-message-envelope); the expense app leaves it off.
 
 ### Connector sync
 
@@ -179,6 +179,8 @@ Normalization rules:
 
 1. Read supported text leaf parts from `body.content`, which the Gmail MCP returns as decoded text and the `RAW` conversion decodes. Ignore text parts whose content is null; Version 0 does not decode `base64_url_content`.
 2. For `multipart/alternative`, prefer a non-empty `text/plain` part. Use `text/html` only when no usable plain-text alternative exists, or when the plain-text alternative is a stub: fewer than 20 words outside links while the converted HTML alternative has at least four times as many. Do not concatenate duplicate alternatives.
+
+   The adapter has a prefer-HTML option, off by default. When it is on, every `multipart/alternative`, including one nested in another container, uses its converted HTML alternative whenever that is non-empty, and falls back to plain text otherwise; the stub rule is not applied. Other multipart containers are unaffected. The expense app leaves the option off, so its envelopes do not change. The job tracker turns it on, because some LinkedIn notifications carry the job title and status only in HTML, behind a plain-text stub whose footer can make it too long for the stub rule. The envelope does not record the option; `content.source_type` shows whether HTML was used.
 3. Convert selected HTML to plain text. Remove scripts, styles, templates, hidden content, and tags; decode entities and preserve meaningful paragraph, list, and table-cell boundaries. Never load remote resources.
 4. For other multipart containers, concatenate eligible text parts in MIME order. Ignore all non-text parts in Version 0.
 5. Normalize Unicode to NFKC, line endings to `\n`, non-breaking spaces to ordinary spaces, and remove control characters other than tabs and newlines. Trim line-end whitespace and collapse runs of more than two blank lines.
@@ -188,7 +190,7 @@ Normalization rules:
 
 These character limits are deterministic and model-provider independent. A later model may use a smaller token budget internally, but it must not silently apply a second content limit. [Section 4](#4-model-runtime-and-prompt) defines how the analyser detects a prompt that exceeds its token budget.
 
-`content.source_type` is `text_plain` when all selected text came from plain-text parts, `html_converted` when HTML conversion was required, or `mixed_text` when multiple non-alternative text parts were combined.
+`content.source_type` is `text_plain` when all selected text came from plain-text parts, `html_converted` when HTML was selected, or `mixed_text` when multiple non-alternative text parts were combined.
 
 Provider mapping:
 

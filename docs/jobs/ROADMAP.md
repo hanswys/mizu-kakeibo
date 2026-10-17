@@ -74,7 +74,7 @@ Resolve the MVP's open questions using the sampled layouts, update the MVP, then
 
 **Type:** AFK
 
-**Status:** `in-progress` (the `RAW` converter was delivered on 2026-10-15 as shared work for the expense app's V0-2; the HTML option remains. For the expense app's V0-2 revision, the shared normalizer now also uses HTML when the plain-text alternative is a short stub (see the expense contract's [normalization rules](../expenses/inbox-expense-contract.md#2-normalized-inbox-message-envelope)). LinkedIn stubs were not tested against that rule, and their footer may make them too long for it, so the option is still needed.)
+**Status:** `complete` (2026-10-17. The `RAW` converter was delivered on 2026-10-15 as shared work for the expense app's V0-2, and the prefer-HTML option on 2026-10-17; see the expense contract's [normalization rules](../expenses/inbox-expense-contract.md#2-normalized-inbox-message-envelope). The option does not depend on the stub rule, which LinkedIn stubs with a long footer can defeat.)
 
 **Blocked by:** J0-2
 
@@ -87,11 +87,11 @@ This changes shared infrastructure. Update the expense contract's Gmail boundary
 ### Acceptance criteria
 
 - [x] A `RAW` connector message converts into the MIME-part shape and normalizes into a valid `inbox-message/v0` envelope, with headers, received time, and text preserved.
-- [ ] With the HTML option on, the envelope for a stub-plain-text layout contains the job title and status wording from the HTML part.
-- [ ] With the option off, normalization output is unchanged, and the expense tests pass without modification.
+- [x] With the HTML option on, the envelope for a stub-plain-text layout contains the job title and status wording from the HTML part.
+- [x] With the option off, normalization output is unchanged, and the expense tests pass without modification.
 - [x] The expense contract describes the observed connector tools and response shapes.
-- [ ] The expense contract describes the HTML option.
-- [ ] Tests use sanitized synthetic fixtures only.
+- [x] The expense contract describes the HTML option.
+- [x] Tests use sanitized synthetic fixtures only.
 
 ## Issue J0-4 Build the private evaluation set
 
