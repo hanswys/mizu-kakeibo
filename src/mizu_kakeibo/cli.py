@@ -26,6 +26,7 @@ from .models import AnalysisDecision, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingResult, ProcessingStatus
+from .review_page import item_url, write_review_page
 from .runlock import RunLockHeldError, run_lock
 from .scheduled import INSTALLED_PROGRAM, SyncReport, System, launch_agent, scheduled_sync
 from .selection import search_query, select_new_messages
@@ -130,6 +131,7 @@ def command_process(args: argparse.Namespace) -> int:
             )
     except RunLockHeldError as error:
         return _report_locked(error)
+    write_review_page(_store(args))
     _write_json(_process_report(selection, results), None)
     return _exit_status(results)
 
@@ -191,6 +193,7 @@ def command_sync(args: argparse.Namespace) -> int:
             )
     except RunLockHeldError as error:
         return _report_locked(error)
+    write_review_page(_store(args))
     _write_json(report.output, None)
     return 1 if report.output["summary"]["failed"] else 0
 
@@ -208,6 +211,7 @@ def command_scheduled_sync(args: argparse.Namespace) -> int:
             before_runtime=before_runtime,
         ),
         system=System(),
+        write_review_page=lambda: write_review_page(_store(args)),
     )
 
 
@@ -306,18 +310,6 @@ def command_filter_new(args: argparse.Namespace) -> int:
     return 0
 
 
-def _gmail_url(message_id: str, thread_id: str | None) -> str | None:
-    """Build the Gmail web link the connector reports, from hexadecimal Gmail IDs."""
-    try:
-        message = int(message_id, 16)
-        thread = int(thread_id, 16) if thread_id else None
-    except ValueError:
-        return None
-    if thread is None:
-        return None
-    return f"https://mail.google.com/mail/#all/thread-f:{thread}|msg-f:{message}"
-
-
 def command_review_list(args: argparse.Namespace) -> int:
     items = _store(args).list_review_items()
     _write_json(
@@ -325,9 +317,7 @@ def command_review_list(args: argparse.Namespace) -> int:
             {
                 "provider": item.provider,
                 "message_id": item.message_id,
-                "gmail_url": _gmail_url(item.message_id, item.thread_id)
-                if item.provider == "gmail"
-                else None,
+                "gmail_url": item_url(item),
                 "reason": item.reason,
                 "missing_fields": item.missing_fields,
                 "created_at": item.created_at,
@@ -355,7 +345,9 @@ def command_review_resolve(args: argparse.Namespace) -> int:
             if args.transaction_date
             else None,
         )
-    _store(args).resolve_review(args.provider, args.message_id, decision, transaction)
+    store = _store(args)
+    store.resolve_review(args.provider, args.message_id, decision, transaction)
+    write_review_page(store)
     _write_json(
         {
             "provider": args.provider,

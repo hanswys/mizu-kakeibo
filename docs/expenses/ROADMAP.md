@@ -288,7 +288,7 @@ Install a LaunchAgent that runs the V1-1 sync every hour within the [scheduled r
 
 **Type:** AFK
 
-**Status:** `needs-triage`
+**Status:** `in-progress` (triaged on 2026-10-17. A [follow-up spike](scheduler-spike-2026-10-16.md#dialogs-after-the-run-exits-2026-10-17) found that a dialog left as an ordinary child of the run is killed when the run exits, and one the run waits for would hold the next hour, so the dialog runs in a new session and the LaunchAgent is unchanged. The user chose that a run failing before processing shows only its dialog, at most once a day, with no notification; that every sync, `process`, and review resolution rewrites the review page, while only a scheduled run notifies; and the notification and dialog wording now in the [contract](inbox-expense-contract.md#9-scheduled-run).)
 
 **Blocked by:** V1-3
 
@@ -298,10 +298,11 @@ Show the [notification and dialog](inbox-expense-contract.md#9-scheduled-run) af
 
 ### Acceptance criteria
 
-- [ ] A sync that processed or failed a message notifies its counts; a sync with nothing new is silent.
+- [ ] A scheduled sync that processed or failed a message notifies its counts; a sync with nothing new, and a run stopped by the lock or a gate, is silent.
 - [ ] Review items or failures also show a dialog whose `Open review list` button opens the review page.
-- [ ] The dialog never holds the run lock, and a run that fails before processing shows it at most once a day.
-- [ ] The review page is rewritten after each sync and each review resolution.
+- [ ] The dialog is shown after the lock is released and does not hold the next run, and a run that fails before processing shows its failure dialog at most once a day, with no notification.
+- [ ] The review page is rewritten after each sync, `process`, and review resolution, with escaped values and no message content.
+- [ ] The user sees a real notification and dialog after a scheduled sync and opens the review page from the dialog.
 
 ## Issue V1-5 Confirm the Gmail sign-in lasts past seven days
 

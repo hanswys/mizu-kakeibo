@@ -19,16 +19,22 @@ from test_gmail_api import (  # noqa: F401 - the autouse fixture guards against 
 )
 
 from mizu_kakeibo import cli, gmail_api, scheduled
-from mizu_kakeibo.constants import MODEL, MODEL_DIGEST, OLLAMA_BASE_URL
+from mizu_kakeibo.constants import ANALYSIS_OUTPUT_CONTRACT, MODEL, MODEL_DIGEST, OLLAMA_BASE_URL
+from mizu_kakeibo.models import AnalysisDecision, ExpenseAnalysisOutput, MissingField
 from mizu_kakeibo.ollama import OllamaAnalyser
-from mizu_kakeibo.scheduled import MALAYSIA, PowerState, WakeState
+from mizu_kakeibo.runlock import RunLockHeldError, run_lock
+from mizu_kakeibo.scheduled import FAILURE_DIALOGS, MALAYSIA, PowerState, WakeState
 
 FULL_WAKE = WakeState(lid_closed=False, capabilities=["CPU", "Graphics", "Audio", "Network"])
 SUBJECT = "Fictional subject that must never be recorded"
 
 
 class FakeSystem:
-    def __init__(self) -> None:
+    def __init__(self, database) -> None:
+        self.database = database
+        self.notifications: list[tuple[str, str]] = []
+        self.dialogs: list[tuple[str, object]] = []
+        self.shown_under_lock = 0
         self.wake = FULL_WAKE
         self.power = PowerState("ac", None)
         self.versions: list[str | None] = ["0.40.5"]
@@ -57,6 +63,21 @@ class FakeSystem:
     def sleep(self, _seconds):
         self.sleeps += 1
 
+    def notify(self, subtitle, text):
+        self._check_lock()
+        self.notifications.append((subtitle, text))
+
+    def show_dialog(self, text, review_page):
+        self._check_lock()
+        self.dialogs.append((text, review_page))
+
+    def _check_lock(self):
+        try:
+            with run_lock(self.database):
+                pass
+        except RunLockHeldError:
+            self.shown_under_lock += 1
+
 
 class Clock:
     def __init__(self) -> None:
@@ -82,7 +103,7 @@ def run(tmp_path, monkeypatch):
             api_message("m3", "Example Friend <friend@example.invalid>", SUBJECT, offset=2),
         ]
     )
-    system = FakeSystem()
+    system = FakeSystem(live / "kakeibo.sqlite3")
     clock = Clock()
     monkeypatch.setattr(cli, "OllamaAnalyser", lambda: analyser)
     monkeypatch.setattr(
@@ -115,6 +136,9 @@ def run(tmp_path, monkeypatch):
         path = live / "scheduled.log"
         return path.read_text().splitlines() if path.exists() else []
 
+    def silent():
+        return system.notifications == [] and system.dialogs == []
+
     return SimpleNamespace(
         argv=argv,
         live=live,
@@ -125,6 +149,8 @@ def run(tmp_path, monkeypatch):
         directory=directory,
         records=records,
         log=log,
+        silent=silent,
+        page=live / "review.html",
         main=lambda: cli.main(argv),
     )
 
@@ -191,6 +217,8 @@ def test_a_run_that_finds_the_lock_held_logs_it_and_records_nothing(run, hold_ru
     assert run.records() == []
     assert run.fake.requests == []
     assert run.system.kept_awake == 0
+    assert run.silent()
+    assert not run.page.exists()
 
 
 def test_a_done_day_is_not_run_again_but_the_next_day_is(run) -> None:
@@ -200,6 +228,7 @@ def test_a_done_day_is_not_run_again_but_the_next_day_is(run) -> None:
     assert run.main() == 0
     assert run.log()[-1] == "2026-10-17T11:00:04+08:00 trigger=command outcome=done_today"
     assert run.fake.requests == []
+    assert len(run.system.notifications) == 1  # the first run's
     assert len(run.records()) == 1
 
     run.clock.time = datetime(2026, 10, 18, 8, 0, 4, tzinfo=MALAYSIA)
@@ -234,6 +263,7 @@ def test_a_maintenance_wake_or_closed_lid_skips_until_the_next_full_wake(run, wa
     assert run.fake.requests == []
     assert run.records() == []
     assert run.system.kept_awake == 0
+    assert run.silent()
 
     run.system.wake = FULL_WAKE
     run.clock.time += timedelta(minutes=40)
@@ -254,6 +284,7 @@ def test_low_or_unknown_power_skips_the_run(run, power, logged) -> None:
     assert run.main() == 0
     assert run.log() == [f"2026-10-17T10:00:04+08:00 trigger=command outcome=low_power {logged}"]
     assert run.fake.requests == []
+    assert run.silent()
 
 
 def test_a_battery_at_the_minimum_charge_runs(run) -> None:
@@ -285,6 +316,10 @@ def test_a_runtime_that_never_answers_fails_before_retrieval(run) -> None:
     assert record["day_done"] is False
     assert "did not answer within 30 seconds" in record["error"]
     assert run.log()[-1].endswith("outcome=failed run=20261017-100004 stage=runtime")
+    assert record["notification"] is False
+    assert record["dialog"] == "failure"
+    assert run.system.notifications == []
+    assert run.system.dialogs == [(FAILURE_DIALOGS["runtime"], None)]
 
 
 def test_a_wrong_runtime_version_fails_before_retrieval(run, monkeypatch) -> None:
@@ -419,6 +454,180 @@ def test_an_unexpected_error_is_recorded_by_type_and_raised(run, monkeypatch) ->
     assert record["failed_stage"] == "unexpected"
     assert record["error"] == "KeyError"
     assert run.log()[-1].endswith("stage=unexpected")
+    assert run.system.dialogs == [(FAILURE_DIALOGS["unexpected"], None)]
+    assert run.system.shown_under_lock == 0
+
+
+def review_the_friend_message(run) -> None:
+    """Send the message with SUBJECT to review, with a reason that needs escaping."""
+    analyse = run.analyser.analyse
+
+    def reviewing(analyser_input):
+        if analyser_input.message.subject != SUBJECT:
+            return analyse(analyser_input)
+        return ExpenseAnalysisOutput(
+            contract_version=ANALYSIS_OUTPUT_CONTRACT,
+            decision=AnalysisDecision.NEEDS_REVIEW,
+            reason='Fictional <b>refund</b> & "policy" review',
+            transaction=None,
+            missing_fields=[MissingField.AMOUNT_MINOR],
+        )
+
+    run.analyser.analyse = reviewing
+
+
+def test_the_fake_system_sees_a_held_lock(run) -> None:
+    with run_lock(run.live / "kakeibo.sqlite3"):
+        run.system.notify("subtitle", "text")
+    assert run.system.shown_under_lock == 1
+
+
+def test_a_sync_that_analysed_messages_notifies_its_counts_without_a_dialog(run) -> None:
+    assert run.main() == 0
+    [record] = run.records()
+    assert record["notification"] is True
+    assert record["dialog"] is None
+    assert run.system.notifications == [
+        ("Checked 2 new messages", "1 expense · 0 to review · 0 failed")
+    ]
+    assert run.system.dialogs == []
+    assert run.system.shown_under_lock == 0
+    assert "Nothing to review." in run.page.read_text()
+
+
+def test_a_sync_with_nothing_new_is_silent_but_rewrites_the_review_page(run, capsys) -> None:
+    review_the_friend_message(run)
+    assert cli.main(["sync", *run.argv[1:]]) == 0  # a manual sync rewrites the page too
+    capsys.readouterr()
+    assert "1 item to review." in run.page.read_text()
+    assert run.silent()
+    run.page.unlink()
+
+    assert run.main() == 0
+    [record] = run.records()
+    assert record["counts"]["skipped"] == 2
+    assert record["notification"] is False
+    assert record["dialog"] is None
+    assert run.silent()
+    assert "1 item to review." in run.page.read_text()
+
+
+def test_review_items_show_a_dialog_that_opens_the_review_page(run) -> None:
+    review_the_friend_message(run)
+    assert run.main() == 0
+    [record] = run.records()
+    assert record["dialog"] == "review"
+    assert run.system.notifications == [
+        ("Checked 2 new messages", "1 expense · 1 to review · 0 failed")
+    ]
+    assert run.system.dialogs == [("Sync finished: 1 expense, 1 to review, 0 failed.", run.page)]
+    assert run.system.shown_under_lock == 0
+
+    page = run.page.read_text()
+    assert "Fictional &lt;b&gt;refund&lt;/b&gt; &amp; &quot;policy&quot; review" in page
+    assert "Missing fields: amount_minor" in page
+    assert "<script" not in page
+    for private in (SNIPPET, SUBJECT, "Example Friend", "friend@example.invalid"):
+        assert private not in page
+    assert run.page.stat().st_mode & 0o777 == 0o600
+
+
+def test_failed_messages_show_a_dialog_saying_they_are_retried(run) -> None:
+    run.fake.raw_errors["m1"] = 429
+    assert run.main() == 1
+    assert run.system.notifications == [
+        ("Checked 2 new messages", "0 expenses · 0 to review · 1 failed")
+    ]
+    assert run.system.dialogs == [
+        (
+            "Sync finished: 0 expenses, 0 to review, 1 failed. "
+            "Failed messages are retried next hour.",
+            run.page,
+        )
+    ]
+
+
+def test_a_run_that_fails_before_processing_shows_its_dialog_once_a_day(run, monkeypatch) -> None:
+    write_token(run.directory, expiry="2026-01-01T00:00:00Z")
+    endpoint = FakeTokenEndpoint(400, {"error": "invalid_grant"})
+    monkeypatch.setattr(gmail_api, "_refresh_request", lambda: endpoint)
+    assert run.main() == 1
+    assert run.system.notifications == []
+    assert run.system.dialogs == [(FAILURE_DIALOGS["sign_in"], None)]
+    assert "mizu-kakeibo gmail-sign-in" in FAILURE_DIALOGS["sign_in"]
+    assert "--replace" not in FAILURE_DIALOGS["sign_in"]
+    assert not run.page.exists()
+
+    run.clock.time += timedelta(hours=1)
+    assert run.main() == 1
+    run.system.versions = [None]  # a different stage later that day is not shown either
+    write_token(run.directory)
+    run.clock.time += timedelta(hours=1)
+    assert run.main() == 1
+    assert [record["dialog"] for record in run.records()] == ["failure", None, None]
+    assert len(run.system.dialogs) == 1
+
+    run.clock.time = datetime(2026, 10, 18, 8, 0, 4, tzinfo=MALAYSIA)
+    assert run.main() == 1
+    assert run.system.dialogs[-1] == (FAILURE_DIALOGS["runtime"], None)
+    assert run.system.notifications == []
+
+
+def test_a_failure_dialog_comes_after_processing_dialogs_the_same_day(run) -> None:
+    run.fake.raw_errors["m1"] = 429
+    assert run.main() == 1
+    run.clock.time += timedelta(hours=1)
+    run.fake.status = 503
+    assert run.main() == 1
+    assert run.records()[1]["dialog"] == "failure"
+    assert run.system.dialogs[-1] == (FAILURE_DIALOGS["retrieval"], None)
+
+
+def test_the_notification_passes_its_values_as_arguments(monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(
+        scheduled.subprocess, "run", lambda command, **options: calls.append((command, options))
+    )
+    text = 'Quote " and & end tell'
+    scheduled.System().notify("Checked 1 new message", text)
+    [(command, options)] = calls
+    assert command == [
+        "/usr/bin/osascript",
+        "-e",
+        scheduled.NOTIFICATION_SCRIPT,
+        "Mizu Kakeibo",
+        "Checked 1 new message",
+        text,
+    ]
+    assert text not in scheduled.NOTIFICATION_SCRIPT
+    assert options["timeout"] == 10
+
+
+@pytest.mark.parametrize("page", [None, "review.html"])
+def test_a_dialog_runs_in_its_own_session_and_is_not_waited_for(
+    monkeypatch, tmp_path, page
+) -> None:
+    started = []
+
+    class Popen:
+        def __init__(self, command, **options):
+            started.append((command, options))
+
+        def wait(self):  # pragma: no cover - the run must never wait
+            raise AssertionError("the run waited for its dialog")
+
+    monkeypatch.setattr(scheduled.subprocess, "Popen", Popen)
+    review_page = None if page is None else tmp_path / page
+    scheduled.System().show_dialog("Sync finished.", review_page)
+    [(command, options)] = started
+    script = scheduled.FAILURE_DIALOG_SCRIPT if page is None else scheduled.REVIEW_DIALOG_SCRIPT
+    expected = ["Mizu Kakeibo", "Sync finished.", "3600"]
+    if review_page is not None:
+        expected.append(str(review_page))
+    assert command == ["/usr/bin/osascript", "-e", script, *expected]
+    assert options["start_new_session"] is True
+    assert ("Open review list" in script) is (page is not None)
+    assert "quoted form of (item 4 of argv)" in scheduled.REVIEW_DIALOG_SCRIPT
 
 
 def test_the_launch_agent_runs_the_installed_command_every_hour(tmp_path, capsysbinary) -> None:

@@ -23,6 +23,15 @@ Evidence for the [scheduled sync](MVP.md#scheduled-sync) on the user's 16 GB M2 
 - An `osascript` dialog was shown, and its `Open review list` button opened a local page in the browser.
 - `terminal-notifier` could not be installed: Homebrew has no build for macOS 27, and building it needs Xcode.
 
+### Dialogs after the run exits, 2026-10-17
+
+A follow-up for [V1-4](ROADMAP.md#issue-v1-4-report-each-scheduled-sync-and-open-the-review-list), with three stub LaunchAgents whose run started an `osascript` dialog and exited at once. The test LaunchAgents were removed afterwards.
+
+- A dialog started as an ordinary child process was killed as soon as the run exited, because launchd ends the job's remaining process group.
+- A dialog started in a new session stayed up after the run exited. launchd reported the job as not running, and starting it again while the dialog was up ran a second instance normally, so a waiting dialog does not hold the next hour.
+- An ordinary child also survived with `AbandonProcessGroup` set, but that needs a plist change.
+- Clicking `Open review list` in a dialog that outlived its run ran `open` on the page without error, from the dialog's own AppleScript.
+
 ## Retry by hour
 
 A stub wrapper with hourly triggers, the lock, and a done-today gate failed in its first hour, succeeded in the next, and skipped the third.

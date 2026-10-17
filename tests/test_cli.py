@@ -8,7 +8,7 @@ import pytest
 
 from mizu_kakeibo import cli
 from mizu_kakeibo.constants import ANALYSIS_OUTPUT_CONTRACT
-from mizu_kakeibo.models import AnalysisDecision, ExpenseAnalysisOutput, Transaction
+from mizu_kakeibo.models import AnalysisDecision, ExpenseAnalysisOutput, MissingField, Transaction
 from mizu_kakeibo.ollama import RuntimeMetadata
 
 
@@ -408,3 +408,48 @@ def test_review_and_correction_work_while_a_sync_holds_the_lock(
     correct = ["ledger-correct", "gmail", "message-1", "--merchant", "Example Delivery"]
     assert cli.main(correct + storage) == 0
     assert json.loads(capsys.readouterr().out)["status"] == "corrected"
+
+
+def test_process_and_review_resolve_rewrite_the_review_page(
+    tmp_path, monkeypatch, capsys, hold_run_lock
+) -> None:
+    review = {**gmail_message(), "id": "19e3c5a1b2c3d4e5", "thread_id": "19e3c5a1b2c3d4e0"}
+    source = tmp_path / "gmail.json"
+    source.write_text(json.dumps([review]), encoding="utf-8")
+    database = tmp_path / "private.sqlite3"
+    storage = ["--database", str(database), "--ledger", str(tmp_path / "ledger.csv")]
+    page = tmp_path / "review.html"
+
+    class Reviewing(FakeOllamaAnalyser):
+        def analyse(self, _):
+            return ExpenseAnalysisOutput(
+                contract_version=ANALYSIS_OUTPUT_CONTRACT,
+                decision=AnalysisDecision.NEEDS_REVIEW,
+                reason="Fictional <script>alert(1)</script> review",
+                transaction=None,
+                missing_fields=[MissingField.CURRENCY, MissingField.TRANSACTION_DATE],
+            )
+
+    monkeypatch.setattr(cli, "OllamaAnalyser", Reviewing)
+    assert cli.main(["process", str(source)] + storage) == 0
+    capsys.readouterr()
+    written = page.read_text()
+    assert "1 item to review." in written
+    assert "Fictional &lt;script&gt;alert(1)&lt;/script&gt; review" in written
+    assert "<script>" not in written
+    assert "Missing fields: currency, transaction_date" in written
+    assert (
+        'href="https://mail.google.com/mail/#all/thread-f:1865551968941102304|'
+        'msg-f:1865551968941102309"'
+    ) in written
+    for private in ("Example Store", "receipts@example.invalid", "Purchase completed"):
+        assert private not in written
+    assert page.stat().st_mode & 0o777 == 0o600
+
+    hold_run_lock(database)  # a resolution rewrites the page without the run lock
+    assert cli.main(["review-resolve", "gmail", review["id"], "not_expense"] + storage) == 0
+    assert "Nothing to review." in page.read_text()
+    assert sorted(path.name for path in tmp_path.iterdir() if "review" in path.name) == [
+        "review.html",
+        "review.html.lock",
+    ]
