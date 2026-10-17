@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -27,6 +27,7 @@ from .normalization import NormalizationError, normalize_gmail_message, parse_in
 from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingResult, ProcessingStatus
 from .runlock import RunLockHeldError, run_lock
+from .scheduled import INSTALLED_PROGRAM, SyncReport, System, launch_agent, scheduled_sync
 from .selection import search_query, select_new_messages
 from .storage import LedgerCorrectionError, ReviewResolutionError, Store
 from .transcript import collect_raw_messages, connector_message_metadata, current_session_transcript
@@ -147,29 +148,74 @@ def _process_retrieved(
     return ProcessingResult("gmail", message_id, ProcessingStatus.FAILED, error=error)
 
 
+def run_sync(
+    database: Path,
+    ledger: Path,
+    gmail_directory: Path,
+    *,
+    received_since: datetime,
+    limit: int,
+    full: bool,
+    before_runtime: Callable[[], None] | None = None,
+) -> SyncReport:
+    """Run one Gmail API sync while the caller holds the run lock, and return its report."""
+    credentials = load_credentials(gmail_directory)
+    store = Store(database, ledger)
+    with OllamaAnalyser() as analyser, GmailApiClient(credentials) as gmail:
+        if before_runtime is not None:
+            before_runtime()
+        runtime = analyser.verify_runtime()
+        retrieval = retrieve_new_messages(
+            gmail, store, received_since=received_since, limit=limit, full=full
+        )
+        processor = InboxProcessor(store, analyser)
+        results = [
+            _process_retrieved(processor, retrieval, message_id)
+            for message_id in retrieval.selection.message_ids
+        ]
+    return SyncReport(
+        _process_report(retrieval.selection.as_json(), results), runtime.runtime_version
+    )
+
+
 def command_sync(args: argparse.Namespace) -> int:
     try:
         with run_lock(args.database):
-            credentials = load_credentials(args.gmail_directory)
-            store = _store(args)
-            with OllamaAnalyser() as analyser, GmailApiClient(credentials) as gmail:
-                analyser.verify_runtime()
-                retrieval = retrieve_new_messages(
-                    gmail,
-                    store,
-                    received_since=datetime.fromisoformat(args.received_since),
-                    limit=args.limit,
-                    full=args.full,
-                )
-                processor = InboxProcessor(store, analyser)
-                results = [
-                    _process_retrieved(processor, retrieval, message_id)
-                    for message_id in retrieval.selection.message_ids
-                ]
+            report = run_sync(
+                args.database,
+                args.ledger,
+                args.gmail_directory,
+                received_since=datetime.fromisoformat(args.received_since),
+                limit=args.limit,
+                full=args.full,
+            )
     except RunLockHeldError as error:
         return _report_locked(error)
-    _write_json(_process_report(retrieval.selection.as_json(), results), None)
-    return _exit_status(results)
+    _write_json(report.output, None)
+    return 1 if report.output["summary"]["failed"] else 0
+
+
+def command_scheduled_sync(args: argparse.Namespace) -> int:
+    return scheduled_sync(
+        args.database,
+        lambda full, before_runtime: run_sync(
+            args.database,
+            args.ledger,
+            args.gmail_directory,
+            received_since=datetime.fromisoformat(SYNC_RECEIVED_SINCE),
+            limit=SYNC_BATCH_LIMIT,
+            full=full,
+            before_runtime=before_runtime,
+        ),
+        system=System(),
+    )
+
+
+def command_launch_agent(args: argparse.Namespace) -> int:
+    sys.stdout.buffer.write(
+        launch_agent(args.program, args.database, args.ledger, args.gmail_directory)
+    )
+    return 0
 
 
 def command_gmail_sign_in(args: argparse.Namespace) -> int:
@@ -420,6 +466,22 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--gmail-directory", type=Path, default=GMAIL_API_DIRECTORY)
     _add_storage_options(sync)
     sync.set_defaults(handler=command_sync)
+
+    scheduled = subparsers.add_parser(
+        "scheduled-sync", help="run the hourly sync behind its gates and record it"
+    )
+    scheduled.add_argument("--gmail-directory", type=Path, default=GMAIL_API_DIRECTORY)
+    _add_storage_options(scheduled)
+    scheduled.set_defaults(handler=command_scheduled_sync)
+
+    agent = subparsers.add_parser(
+        "launch-agent", help="print the LaunchAgent that runs scheduled-sync every hour"
+    )
+    agent.add_argument("--program", type=Path, default=INSTALLED_PROGRAM)
+    agent.add_argument("--database", type=Path, required=True)
+    agent.add_argument("--ledger", type=Path, required=True)
+    agent.add_argument("--gmail-directory", type=Path, default=GMAIL_API_DIRECTORY)
+    agent.set_defaults(handler=command_launch_agent)
 
     gmail_sign_in = subparsers.add_parser(
         "gmail-sign-in", help="sign in to Gmail with read-only access in the browser"
