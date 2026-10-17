@@ -41,3 +41,4 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/mizu_kakeibo/constants.py" = ["E501"]
+"src/mizu_kakeibo/jobs/constants.py" = ["E501"]

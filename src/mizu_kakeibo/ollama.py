@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 from pydantic import ValidationError
@@ -24,6 +25,9 @@ from .constants import (
     TEMPERATURE,
 )
 from .models import AnalysisDecision, ExpenseAnalysisInput, ExpenseAnalysisOutput, MissingField
+
+_Output = TypeVar("_Output")
+_Runtime = TypeVar("_Runtime", bound="OllamaRuntime")
 
 _DOLLAR_AMOUNT = re.compile(r"\$\s?\d")
 _RINGGIT_MARKER = re.compile(r"(?<![A-Za-z])(?:RM|MYR)(?![A-Za-z])|ringgit", re.IGNORECASE)
@@ -95,7 +99,15 @@ class RuntimeMetadata:
     max_generated_tokens: int
 
 
-class OllamaAnalyser:
+class OllamaRuntime:
+    """The pinned Ollama runtime shared by the expense and job-tracker analysers.
+
+    A subclass sets its prompt version and calls `_chat` with its own prompt, output schema,
+    and validation; the model, runtime checks, options, and context budget stay shared.
+    """
+
+    prompt_version: str
+
     def __init__(
         self,
         base_url: str = OLLAMA_BASE_URL,
@@ -112,7 +124,7 @@ class OllamaAnalyser:
         if self._owns_client:
             self._client.close()
 
-    def __enter__(self) -> OllamaAnalyser:
+    def __enter__(self: _Runtime) -> _Runtime:
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -161,7 +173,7 @@ class OllamaAnalyser:
             runtime_version=runtime_version,
             model=MODEL,
             model_digest=MODEL_DIGEST,
-            prompt_version=PROMPT_VERSION,
+            prompt_version=self.prompt_version,
             temperature=TEMPERATURE,
             seed=SEED,
             context_size=CONTEXT_SIZE,
@@ -184,19 +196,26 @@ class OllamaAnalyser:
                     return ModelMemory(total_bytes=total, gpu_bytes=gpu)
         return None
 
-    def analyse(self, analyser_input: ExpenseAnalysisInput) -> ExpenseAnalysisOutput:
+    def _chat(
+        self,
+        system_prompt: str,
+        user_content: str,
+        output_schema: dict[str, Any],
+        parse: Callable[[str], _Output],
+    ) -> _Output:
+        """Run one schema-constrained chat and parse its content, mapping failures to errors."""
         self.verify_runtime()
         self.last_usage = None
         request: dict[str, Any] = {
             "model": MODEL,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": analyser_input.model_dump_json(),
+                    "content": user_content,
                 },
             ],
-            "format": ExpenseAnalysisOutput.model_json_schema(),
+            "format": output_schema,
             "options": {
                 "temperature": TEMPERATURE,
                 "seed": SEED,
@@ -224,8 +243,7 @@ class OllamaAnalyser:
             content = body["message"]["content"]
             if not isinstance(content, str):
                 raise TypeError("message.content is not a string")
-            output = ExpenseAnalysisOutput.model_validate_json(content)
-            return enforce_currency_evidence(analyser_input, output)
+            return parse(content)
         except httpx.ConnectTimeout as error:
             raise AnalysisError(f"cannot reach the analyser runtime: {error}") from error
         except httpx.TimeoutException as error:
@@ -242,3 +260,19 @@ class OllamaAnalyser:
             raise MessageAnalysisError(
                 "analyser returned malformed JSON or violated the output contract"
             ) from error
+
+
+class OllamaAnalyser(OllamaRuntime):
+    prompt_version = PROMPT_VERSION
+
+    def analyse(self, analyser_input: ExpenseAnalysisInput) -> ExpenseAnalysisOutput:
+        def parse(content: str) -> ExpenseAnalysisOutput:
+            output = ExpenseAnalysisOutput.model_validate_json(content)
+            return enforce_currency_evidence(analyser_input, output)
+
+        return self._chat(
+            SYSTEM_PROMPT,
+            analyser_input.model_dump_json(),
+            ExpenseAnalysisOutput.model_json_schema(),
+            parse,
+        )

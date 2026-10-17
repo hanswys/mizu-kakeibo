@@ -122,7 +122,7 @@ Collect a fixed private set of real inbox emails and record human ground truth b
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `in-progress` (2026-10-18. The evaluator is built: `mizu-kakeibo jobs-evaluate` in the `mizu_kakeibo.jobs` package, tested on synthetic fixtures only. The real run and the decision wait for J0-4's dataset, assembled in the contract's [private dataset format](job-tracker-contract.md#private-dataset-format).)
 
 **Blocked by:** J0-3, J0-4
 
