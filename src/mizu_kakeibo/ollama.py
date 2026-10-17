@@ -66,6 +66,10 @@ class ContextOverflowError(AnalysisError):
     """The prompt did not fit the analyser context budget, so the output is untrusted."""
 
 
+class MessageAnalysisError(AnalysisError):
+    """The analyser timed out or returned invalid output for this message."""
+
+
 @dataclass(frozen=True)
 class TokenUsage:
     prompt_tokens: int
@@ -222,14 +226,19 @@ class OllamaAnalyser:
                 raise TypeError("message.content is not a string")
             output = ExpenseAnalysisOutput.model_validate_json(content)
             return enforce_currency_evidence(analyser_input, output)
+        except httpx.ConnectTimeout as error:
+            raise AnalysisError(f"cannot reach the analyser runtime: {error}") from error
+        except httpx.TimeoutException as error:
+            raise MessageAnalysisError("analyser timed out") from error
+        except httpx.HTTPError as error:
+            raise AnalysisError(f"analyser runtime request failed: {error}") from error
         except (
-            httpx.HTTPError,
             json.JSONDecodeError,
             AttributeError,
             KeyError,
             TypeError,
             ValidationError,
         ) as error:
-            raise AnalysisError(
+            raise MessageAnalysisError(
                 "analyser returned malformed JSON or violated the output contract"
             ) from error

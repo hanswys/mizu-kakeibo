@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Protocol
 
-from .constants import ANALYSIS_OUTPUT_CONTRACT
+from .constants import ANALYSIS_FAILURE_LIMIT, ANALYSIS_OUTPUT_CONTRACT
 from .models import (
     AnalysisDecision,
     ExpenseAnalysisInput,
@@ -15,7 +15,7 @@ from .models import (
     InboxMessage,
     MissingField,
 )
-from .ollama import AnalysisError, ContextOverflowError, RuntimeMetadata
+from .ollama import AnalysisError, ContextOverflowError, MessageAnalysisError, RuntimeMetadata
 from .storage import AlreadyProcessedError, Store
 
 # An over-budget prompt has no trustworthy model output, so the message goes to review.
@@ -23,6 +23,15 @@ _OVERSIZED_REVIEW = ExpenseAnalysisOutput(
     contract_version=ANALYSIS_OUTPUT_CONTRACT,
     decision=AnalysisDecision.NEEDS_REVIEW,
     reason="Message is too long for the analyser context",
+    transaction=None,
+    missing_fields=[MissingField.MESSAGE_CONTENT],
+)
+
+# A message whose own analysis keeps failing goes to review instead of being retried forever.
+_REPEATED_FAILURE_REVIEW = ExpenseAnalysisOutput(
+    contract_version=ANALYSIS_OUTPUT_CONTRACT,
+    decision=AnalysisDecision.NEEDS_REVIEW,
+    reason="Analysis failed repeatedly",
     transaction=None,
     missing_fields=[MissingField.MESSAGE_CONTENT],
 )
@@ -57,7 +66,8 @@ class InboxProcessor:
     def process_one(self, message: InboxMessage, *, reevaluate: bool = False) -> ProcessingResult:
         provider = message.source.provider
         message_id = message.source.message_id
-        if not reevaluate and self.store.is_processed(provider, message_id):
+        processed = self.store.is_processed(provider, message_id)
+        if processed and not reevaluate:
             return ProcessingResult(provider, message_id, ProcessingStatus.SKIPPED)
         try:
             analyser_input = ExpenseAnalysisInput.from_inbox_message(message)
@@ -68,6 +78,14 @@ class InboxProcessor:
                 )
             except ContextOverflowError:
                 output = persisted_output = _OVERSIZED_REVIEW
+            except MessageAnalysisError:
+                # A failed re-evaluation must not replace a processed message's decision.
+                if (
+                    processed
+                    or self.store.record_failure(provider, message_id) < ANALYSIS_FAILURE_LIMIT
+                ):
+                    raise
+                output = persisted_output = _REPEATED_FAILURE_REVIEW
             metadata = self.analyser.verify_runtime()
             self.store.save_analysis(message, persisted_output, metadata, reevaluate=reevaluate)
             return ProcessingResult(

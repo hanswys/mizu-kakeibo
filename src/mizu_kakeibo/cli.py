@@ -26,6 +26,7 @@ from .models import AnalysisDecision, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingResult, ProcessingStatus
+from .runlock import RunLockHeldError, run_lock
 from .selection import search_query, select_new_messages
 from .storage import LedgerCorrectionError, ReviewResolutionError, Store
 from .transcript import collect_raw_messages, connector_message_metadata, current_session_transcript
@@ -106,13 +107,28 @@ def _exit_status(results: list[ProcessingResult]) -> int:
     return 1 if any(result.status is ProcessingStatus.FAILED for result in results) else 0
 
 
+def _report_locked(error: RunLockHeldError) -> int:
+    _write_json(
+        {
+            "status": "locked",
+            "message": "another run is in progress; nothing was recorded",
+            "holder": error.holder,
+        },
+        None,
+    )
+    return 0
+
+
 def command_process(args: argparse.Namespace) -> int:
     messages = [parse_inbox_message(value) for value in _objects(_read_json(args.input))]
     selection = _read_json(args.selection) if args.selection is not None else {}
-    with OllamaAnalyser() as analyser:
-        results = InboxProcessor(_store(args), analyser).process_batch(
-            messages, reevaluate=args.reevaluate
-        )
+    try:
+        with run_lock(args.database), OllamaAnalyser() as analyser:
+            results = InboxProcessor(_store(args), analyser).process_batch(
+                messages, reevaluate=args.reevaluate
+            )
+    except RunLockHeldError as error:
+        return _report_locked(error)
     _write_json(_process_report(selection, results), None)
     return _exit_status(results)
 
@@ -132,22 +148,26 @@ def _process_retrieved(
 
 
 def command_sync(args: argparse.Namespace) -> int:
-    credentials = load_credentials(args.gmail_directory)
-    store = _store(args)
-    with OllamaAnalyser() as analyser, GmailApiClient(credentials) as gmail:
-        analyser.verify_runtime()
-        retrieval = retrieve_new_messages(
-            gmail,
-            store,
-            received_since=datetime.fromisoformat(args.received_since),
-            limit=args.limit,
-            full=args.full,
-        )
-        processor = InboxProcessor(store, analyser)
-        results = [
-            _process_retrieved(processor, retrieval, message_id)
-            for message_id in retrieval.selection.message_ids
-        ]
+    try:
+        with run_lock(args.database):
+            credentials = load_credentials(args.gmail_directory)
+            store = _store(args)
+            with OllamaAnalyser() as analyser, GmailApiClient(credentials) as gmail:
+                analyser.verify_runtime()
+                retrieval = retrieve_new_messages(
+                    gmail,
+                    store,
+                    received_since=datetime.fromisoformat(args.received_since),
+                    limit=args.limit,
+                    full=args.full,
+                )
+                processor = InboxProcessor(store, analyser)
+                results = [
+                    _process_retrieved(processor, retrieval, message_id)
+                    for message_id in retrieval.selection.message_ids
+                ]
+    except RunLockHeldError as error:
+        return _report_locked(error)
     _write_json(_process_report(retrieval.selection.as_json(), results), None)
     return _exit_status(results)
 

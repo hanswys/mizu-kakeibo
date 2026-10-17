@@ -125,6 +125,14 @@ CREATE TABLE IF NOT EXISTS corrections (
     corrected_at TEXT NOT NULL,
     FOREIGN KEY (analysis_id) REFERENCES analyses(id)
 );
+
+CREATE TABLE IF NOT EXISTS analysis_failures (
+    provider TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    failure_count INTEGER NOT NULL CHECK (failure_count > 0),
+    last_failed_at TEXT NOT NULL,
+    PRIMARY KEY (provider, message_id)
+);
 """
 
 
@@ -191,6 +199,23 @@ class Store:
             InboxMessage.model_validate_json(row["envelope_json"]).received_at for row in rows
         ]
         return max(received, default=None)
+
+    def record_failure(self, provider: str, message_id: str) -> int:
+        """Count a failed analysis of the message's own and return its failure count."""
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "INSERT INTO analysis_failures(provider, message_id, failure_count, "
+                "last_failed_at) VALUES (?, ?, 1, ?) "
+                "ON CONFLICT(provider, message_id) DO UPDATE SET "
+                "failure_count = failure_count + 1, last_failed_at = excluded.last_failed_at",
+                (provider, message_id, _utc_now()),
+            )
+            row = connection.execute(
+                "SELECT failure_count FROM analysis_failures WHERE provider = ? AND message_id = ?",
+                (provider, message_id),
+            ).fetchone()
+        return int(row["failure_count"])
 
     def save_analysis(
         self,

@@ -247,7 +247,7 @@ Add [Gmail API retrieval](inbox-expense-contract.md#gmail-api-retrieval) of new 
 
 **Type:** AFK
 
-**Status:** `needs-triage` (designed on 2026-10-16 from the [scheduler spike](scheduler-spike-2026-10-16.md))
+**Status:** `complete` (designed and built on 2026-10-16 from the [scheduler spike](scheduler-spike-2026-10-16.md). The Gmail API `sync` from [V1-1](#issue-v1-1-read-new-inbox-messages-through-the-gmail-api) takes the same lock, and its retrieval errors are not counted against a message.)
 
 **Blocked by:** None - can start immediately
 
@@ -257,11 +257,11 @@ Add the [run lock](inbox-expense-contract.md#run-lock) to every processing comma
 
 ### Acceptance criteria
 
-- [ ] A sync, `process`, or re-evaluation that finds the lock held records nothing and exits successfully.
-- [ ] A run killed while holding the lock leaves nothing that blocks the next run.
-- [ ] Review resolution and ledger correction work while a sync holds the lock.
-- [ ] A message's third counted failure stores it as `needs_review`; failures that are not the message's own are not counted.
-- [ ] Tests cover overlapping runs in separate processes, a new database opened by two runs, and each failure kind.
+- [x] A sync, `process`, or re-evaluation that finds the lock held records nothing and exits successfully.
+- [x] A run killed while holding the lock leaves nothing that blocks the next run.
+- [x] Review resolution and ledger correction work while a sync holds the lock.
+- [x] A message's third counted failure stores it as `needs_review`; failures that are not the message's own are not counted.
+- [x] Tests cover overlapping runs in separate processes, a new database opened by two runs, and each failure kind.
 
 ## Issue V1-3 Schedule the daily sync on the laptop
 

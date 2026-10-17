@@ -394,6 +394,20 @@ def test_sync_retrieves_filters_and_processes_new_messages_then_skips_them(
     assert len(sync_setup.analyser.inputs) == 2
 
 
+def test_sync_records_and_retrieves_nothing_while_another_run_holds_the_lock(
+    sync_setup, capsys, hold_run_lock
+) -> None:
+    holder = hold_run_lock(sync_setup.storage / "kakeibo.sqlite3")
+
+    assert cli.main(sync_setup.argv) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "locked"
+    assert report["holder"]["pid"] == holder.pid
+    assert sync_setup.fake.requests == []
+    assert sync_setup.analyser.inputs == []
+    assert sorted(path.name for path in sync_setup.storage.iterdir()) == ["kakeibo.sqlite3.lock"]
+
+
 def test_sync_applies_the_batch_limit_and_defers_the_rest(sync_setup, capsys) -> None:
     assert cli.main([*sync_setup.argv, "--limit", "1"]) == 0
     summary = json.loads(capsys.readouterr().out)["summary"]

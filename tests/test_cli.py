@@ -351,3 +351,60 @@ def test_ledger_correct_rewrites_the_ledger_row_once(tmp_path, monkeypatch, caps
         cli.main(["ledger-correct", "gmail", "message-2", "--merchant", "Example"] + storage)
     assert exit_info.value.code == 2
     assert "no logged expense" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("reevaluate", [[], ["--reevaluate"]])
+def test_process_records_nothing_while_another_run_holds_the_lock(
+    tmp_path, monkeypatch, capsys, hold_run_lock, reevaluate
+) -> None:
+    source = tmp_path / "gmail.json"
+    source.write_text(json.dumps(gmail_message()), encoding="utf-8")
+    database = tmp_path / "private.sqlite3"
+    ledger = tmp_path / "ledger.csv"
+    monkeypatch.setattr(cli, "OllamaAnalyser", FakeOllamaAnalyser)
+    holder = hold_run_lock(database)
+
+    process = ["process", str(source), "--database", str(database), "--ledger", str(ledger)]
+    assert cli.main(process + reevaluate) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "locked"
+    assert report["holder"]["pid"] == holder.pid
+    assert not database.exists()
+    assert not ledger.exists()
+
+
+def test_review_and_correction_work_while_a_sync_holds_the_lock(
+    tmp_path, monkeypatch, capsys, hold_run_lock
+) -> None:
+    source = tmp_path / "gmail.json"
+    message = gmail_message()
+    review = {**message, "id": "message-2"}
+    source.write_text(json.dumps([message, review]), encoding="utf-8")
+    database = tmp_path / "private.sqlite3"
+    storage = ["--database", str(database), "--ledger", str(tmp_path / "ledger.csv")]
+
+    class ReviewSecond(FakeOllamaAnalyser):
+        calls = 0
+
+        def analyse(self, analyser_input):
+            ReviewSecond.calls += 1
+            if ReviewSecond.calls == 1:
+                return self.output
+            return ExpenseAnalysisOutput(
+                contract_version=ANALYSIS_OUTPUT_CONTRACT,
+                decision=AnalysisDecision.NEEDS_REVIEW,
+                reason="Fictional policy review",
+                transaction=None,
+                missing_fields=[],
+            )
+
+    monkeypatch.setattr(cli, "OllamaAnalyser", ReviewSecond)
+    assert cli.main(["process", str(source)] + storage) == 0
+    capsys.readouterr()
+    hold_run_lock(database)
+
+    assert cli.main(["review-resolve", "gmail", "message-2", "not_expense"] + storage) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "resolved"
+    correct = ["ledger-correct", "gmail", "message-1", "--merchant", "Example Delivery"]
+    assert cli.main(correct + storage) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "corrected"

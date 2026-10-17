@@ -361,7 +361,7 @@ The Gmail message ID is the idempotency key.
 
 ### Run lock
 
-A sync, `process`, and an explicit re-evaluation first take an exclusive `flock` on a lock file beside the database, named `<database>.lock`, without waiting. When another process holds it, the command records nothing, reports that another run is in progress, and exits successfully. The file holds the holder's process ID and start time for diagnosis only. The operating system releases the lock when the holder exits, so a crashed run leaves no stale lock. The persistence-time check above remains as a second guard.
+A sync, `process`, and an explicit re-evaluation first take an exclusive `flock` on a lock file beside the database, named `<database>.lock`, without waiting. When another process holds it, the command records nothing, reports that another run is in progress, and exits successfully; `sync` and `process` print `status` `locked` with the holder instead of their groups. The file holds the holder's process ID and start time for diagnosis only. The operating system releases the lock when the holder exits, so a crashed run leaves no stale lock. The persistence-time check above remains as a second guard. In the agent-driven sync, `process` is the step that takes the lock, because searching, selecting, and collecting write nothing to the database.
 
 Review resolution and ledger correction do not take the lock. Each is one SQLite transaction on a single source, so it stays correct beside a running sync and need not wait for one.
 
@@ -369,7 +369,7 @@ Without the lock, the [scheduler spike](scheduler-spike-2026-10-16.md) found tha
 
 ### Repeated failures
 
-When a message's own analysis fails, because the analyser times out or returns invalid output for it, the failure is counted against its Gmail message ID without marking it processed. On the third counted failure, the message is stored as `needs_review` with the reason `Analysis failed repeatedly` and missing field `message_content`, as an oversized message is, so later syncs skip it and the user resolves it in review. A failure that is not the message's own is not counted: the runtime being unreachable or at the wrong version, or a Gmail retrieval error.
+When a message's own analysis fails, because the analyser times out or returns invalid output for it, the failure is counted against its Gmail message ID without marking it processed. On the third counted failure, the message is stored as `needs_review` with the reason `Analysis failed repeatedly` and missing field `message_content`, as an oversized message is, so later syncs skip it and the user resolves it in review. A failure that is not the message's own is not counted: the runtime being unreachable, at the wrong version, or answering with an HTTP error, or a Gmail retrieval error. The count is kept per source in the processed-message store and survives between syncs. A failed re-evaluation of a processed message is not counted, so it never replaces the message's decision.
 
 ## 7. Persistence contract
 

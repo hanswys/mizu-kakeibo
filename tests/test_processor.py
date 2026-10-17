@@ -18,7 +18,12 @@ from mizu_kakeibo.models import (
     MissingField,
     Transaction,
 )
-from mizu_kakeibo.ollama import AnalysisError, ContextOverflowError, RuntimeMetadata
+from mizu_kakeibo.ollama import (
+    AnalysisError,
+    ContextOverflowError,
+    MessageAnalysisError,
+    RuntimeMetadata,
+)
 from mizu_kakeibo.processor import InboxProcessor, ProcessingStatus
 from mizu_kakeibo.storage import LedgerCorrectionError, ReviewResolutionError, Store
 
@@ -221,6 +226,60 @@ def test_model_failure_remains_retryable(store, inbox_message) -> None:
 
     retry = InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
     assert retry.status is ProcessingStatus.PROCESSED
+
+
+def test_third_counted_failure_goes_to_review(tmp_path, inbox_message) -> None:
+    def run(analyser):
+        # Each sync opens the store afresh, so the count must persist between runs.
+        store = Store(tmp_path / "private.sqlite3", tmp_path / "ledger.csv")
+        return store, InboxProcessor(store, analyser).process_one(inbox_message)
+
+    for _ in range(2):
+        store, result = run(FakeAnalyser(error=MessageAnalysisError("analyser timed out")))
+        assert result.status is ProcessingStatus.FAILED
+        assert store.is_processed("gmail", "message-1") is False
+
+    store, result = run(FakeAnalyser(error=MessageAnalysisError("analyser timed out")))
+    assert result.status is ProcessingStatus.PROCESSED
+    assert result.decision == "needs_review"
+    items = store.list_review_items()
+    assert len(items) == 1
+    assert items[0].reason == "Analysis failed repeatedly"
+    assert items[0].missing_fields == ["message_content"]
+    assert read_ledger(store) == []
+
+    later = FakeAnalyser(expense_output())
+    _, result = run(later)
+    assert result.status is ProcessingStatus.SKIPPED
+    assert later.calls == 0
+
+
+def test_failures_that_are_not_the_messages_own_are_not_counted(store, inbox_message) -> None:
+    processor = InboxProcessor(store, FakeAnalyser(error=MessageAnalysisError("timed out")))
+    assert processor.process_one(inbox_message).status is ProcessingStatus.FAILED
+    unreachable = AnalysisError("cannot reach the analyser runtime")
+    for _ in range(5):
+        result = InboxProcessor(store, FakeAnalyser(error=unreachable)).process_one(inbox_message)
+        assert result.status is ProcessingStatus.FAILED
+    assert store.is_processed("gmail", "message-1") is False
+
+    result = processor.process_one(inbox_message)
+    assert result.status is ProcessingStatus.FAILED
+    with sqlite3.connect(store.database_path) as connection:
+        assert connection.execute("SELECT failure_count FROM analysis_failures").fetchall() == [
+            (2,)
+        ]
+
+
+def test_failed_reevaluation_keeps_the_processed_decision(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+    failing = InboxProcessor(store, FakeAnalyser(error=MessageAnalysisError("timed out")))
+    for _ in range(3):
+        result = failing.process_one(inbox_message, reevaluate=True)
+        assert result.status is ProcessingStatus.FAILED
+
+    assert store.list_review_items() == []
+    assert [row["amount_minor"] for row in read_ledger(store)] == ["4250"]
 
 
 def test_context_overflow_goes_to_review(store, inbox_message) -> None:
