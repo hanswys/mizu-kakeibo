@@ -505,7 +505,7 @@ These commands implement the [spending summaries](MVP.md#spending-summaries). Th
   - **Confirmation.** Before saving, it shows the decision, with the transaction formatted as `spend` shows it, and asks for confirmation. Declining returns to the item's keys with nothing saved.
   - **Next item.** After a resolution or a skip, it shows the next item in the list it last printed. After the last item, it prints the list again, read afresh, so skipped items and items added by a sync since are included. An item resolved elsewhere in the meantime is reported as already resolved and passed over.
   - **Leaving.** `q`, the end of input, or an interrupt at any prompt exits successfully, saving nothing for the item on screen. When standard input is not a terminal, it prints the list and exits without asking.
-  - Message text is printed to the terminal only, never written to a file or log.
+  - Message text is printed to the terminal only, never written to a file or log. Control characters and bidirectional overrides are removed first, so a message cannot drive the terminal.
 - These commands print text for a person, not JSON. They never call the analyser or Gmail, and only `review` records anything: the resolutions the user confirms.
 
 ## Deferred optimizations

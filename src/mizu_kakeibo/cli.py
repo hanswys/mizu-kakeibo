@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from datetime import date, datetime
@@ -30,7 +29,7 @@ from .models import AnalysisDecision, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingResult, ProcessingStatus
-from .review_page import item_url, write_review_page
+from .review import Console, item_url, review
 from .runlock import RunLockHeldError, run_lock
 from .scheduled import (
     INSTALLED_PROGRAM,
@@ -39,6 +38,7 @@ from .scheduled import (
     System,
     launch_agent,
     scheduled_sync,
+    write_review_script,
 )
 from .selection import search_query, select_new_messages
 from .spending import last_sync, parse_period, render_spending, render_status
@@ -110,10 +110,8 @@ def command_spend(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_review_open(args: argparse.Namespace) -> int:
-    page = write_review_page(_existing_store(args))
-    subprocess.run(["open", str(page)], check=True)
-    return 0
+def command_review(args: argparse.Namespace) -> int:
+    return review(_existing_store(args), Console())
 
 
 def command_normalize(args: argparse.Namespace) -> int:
@@ -191,7 +189,6 @@ def command_process(args: argparse.Namespace) -> int:
             )
     except RunLockHeldError as error:
         return _report_locked(error)
-    write_review_page(_store(args))
     _write_json(_process_report(selection, results), None)
     return _exit_status(results)
 
@@ -253,7 +250,6 @@ def command_sync(args: argparse.Namespace) -> int:
             )
     except RunLockHeldError as error:
         return _report_locked(error)
-    write_review_page(_store(args))
     _write_json(report.output, None)
     return 1 if report.output["summary"]["failed"] else 0
 
@@ -271,7 +267,9 @@ def command_scheduled_sync(args: argparse.Namespace) -> int:
             before_runtime=before_runtime,
         ),
         system=System(),
-        write_review_page=lambda: write_review_page(_store(args)),
+        write_review_script=lambda: write_review_script(
+            INSTALLED_PROGRAM, args.database, args.ledger
+        ),
     )
 
 
@@ -415,9 +413,7 @@ def command_review_resolve(args: argparse.Namespace) -> int:
             if args.transaction_date
             else None,
         )
-    store = _store(args)
-    store.resolve_review(args.provider, args.message_id, decision, transaction)
-    write_review_page(store)
+    _store(args).resolve_review(args.provider, args.message_id, decision, transaction)
     _write_json(
         {
             "provider": args.provider,
@@ -483,11 +479,11 @@ def build_parser() -> argparse.ArgumentParser:
     _add_storage_options(spend)
     spend.set_defaults(handler=command_spend)
 
-    review_open = subparsers.add_parser(
-        "review-open", help="refresh the review list and open it in the browser"
+    review_parser = subparsers.add_parser(
+        "review", help="resolve the messages waiting for review, one at a time"
     )
-    _add_storage_options(review_open)
-    review_open.set_defaults(handler=command_review_open)
+    _add_storage_options(review_parser)
+    review_parser.set_defaults(handler=command_review)
 
     normalize = subparsers.add_parser("normalize", help="normalize Gmail MCP full messages")
     normalize.add_argument("input", type=Path)

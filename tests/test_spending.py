@@ -159,6 +159,7 @@ def test_status_totals_today_week_and_month() -> None:
         "  To review   2 items",
         "  Last sync   Sun 18 Oct 01:38 · 1 expense",
     ]
+    assert lines[-1].split()[:2] == ["mizu-kakeibo", "review"]
 
 
 def test_last_sync_skips_gated_runs_and_describes_the_newest_attempt(tmp_path) -> None:
@@ -216,22 +217,8 @@ def test_spend_reads_the_period_from_the_live_files(
 
 
 def test_reading_commands_do_not_create_a_missing_database(private_live_paths, capsys) -> None:
-    for command in (["status"], ["spend", "month"], ["review-open"]):
+    for command in (["status"], ["spend", "month"], ["review"]):
         with pytest.raises(SystemExit):
             cli.main(command)
         assert "no database at" in capsys.readouterr().err
     assert not private_live_paths.exists()
-
-
-def test_review_open_refreshes_and_opens_the_page(
-    private_live_paths, inbox_message, monkeypatch
-) -> None:
-    store = Store(private_live_paths / "kakeibo.sqlite3", private_live_paths / "ledger.csv")
-    save(store, inbox_message, "m1", None)
-    opened = []
-    monkeypatch.setattr(cli.subprocess, "run", lambda command, check: opened.append(command))
-
-    assert cli.main(["review-open"]) == 0
-    page = private_live_paths / "review.html"
-    assert opened == [["open", str(page)]]
-    assert "1 item to review." in page.read_text(encoding="utf-8")

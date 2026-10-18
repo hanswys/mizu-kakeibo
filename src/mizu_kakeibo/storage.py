@@ -367,6 +367,17 @@ class Store:
             for row in rows
         ]
 
+    def message(self, provider: str, message_id: str) -> InboxMessage:
+        """Return the stored envelope of a processed message."""
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT envelope_json FROM messages WHERE provider = ? AND message_id = ?",
+                (provider, message_id),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"{provider}:{message_id} is not stored")
+        return InboxMessage.model_validate_json(row["envelope_json"])
+
     def list_transactions(self, start: date, end: date) -> list[LedgerEntry]:
         """Return the logged expenses dated from `start` to `end`, both inclusive."""
         with self.connect() as connection:

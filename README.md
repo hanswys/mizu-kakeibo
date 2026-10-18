@@ -51,7 +51,7 @@ mizu-kakeibo                            # today, this week, this month, review c
 mizu-kakeibo spend month                # this month's expenses and total
 mizu-kakeibo spend last-month --by merchant
 mizu-kakeibo spend 2026-10-11           # also YYYY-MM, YYYY, today, yesterday, week, last-week, year
-mizu-kakeibo review-open                # refresh and open review.html
+mizu-kakeibo review                     # resolve review items one at a time
 ```
 
 Totals are per currency and never converted, as described in the contract's
@@ -128,7 +128,8 @@ again; the LaunchAgent does not change. Each run appends one line to
 `~/mizu-kakeibo-private/live/scheduled.log`, and a run that passes the gates writes
 `run.json` in its own directory under `runs/`. After a run that analysed or failed a
 message, a notification shows its counts, and review items or failures also open a
-dialog whose `Open review list` button opens `~/mizu-kakeibo-private/live/review.html`.
+dialog whose `Review in Terminal` button opens `~/mizu-kakeibo-private/live/review.command`
+in Terminal, which starts `mizu-kakeibo review`.
 A run that fails before reading any message, for example because the Gmail sign-in
 expired, shows one dialog a day saying what to do. To run it now instead of waiting for
 the hour:
@@ -177,8 +178,9 @@ and exits successfully. A message whose analysis times out or returns invalid ou
 three times goes to review instead of being retried.
 
 Use `--reevaluate` to explicitly replace the active analysis for an already
-processed source. Review items can be listed, each with a link to its Gmail message,
-and resolved without modifying the source message:
+processed source. `mizu-kakeibo review` resolves review items one at a time in the
+terminal. For scripts and the agent-driven sync, they can also be listed, each with a
+link to its Gmail message, and resolved without modifying the source message:
 
 ```sh
 uv run mizu-kakeibo review-list --database private-kakeibo.db
@@ -187,9 +189,7 @@ uv run mizu-kakeibo review-resolve gmail MESSAGE_ID not_expense \
 ```
 
 For an accepted or corrected expense, add `--merchant`, `--amount-minor`,
-`--currency`, and `--transaction-date` to `review-resolve`. Every `sync`, `process`,
-and `review-resolve` also rewrites the private page `review.html` beside the database,
-listing the unresolved review items with their Gmail links.
+`--currency`, and `--transaction-date` to `review-resolve`.
 
 Correct an expense that is already logged, giving only the fields to change. The
 original analysis is kept, the correction is recorded, and the ledger row is

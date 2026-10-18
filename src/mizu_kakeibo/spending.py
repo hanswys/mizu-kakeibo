@@ -119,6 +119,17 @@ def _merchant(name: str) -> str:
     return name if len(name) <= MERCHANT_WIDTH else name[: MERCHANT_WIDTH - 1] + "…"
 
 
+def expense_row(
+    transaction_date: date, merchant: str, amount_minor: int, currency: str
+) -> tuple[str, str, str]:
+    """Return one expense's date, merchant, and amount cells as `spend` lists them."""
+    return (
+        f"{transaction_date:%a} {transaction_date.day:>2} {transaction_date:%b}",
+        _merchant(merchant),
+        format_money(amount_minor, currency),
+    )
+
+
 def _table(rows: list[tuple[str, ...]]) -> list[str]:
     """Left-align every column except the last, which holds right-aligned amounts."""
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
@@ -148,12 +159,7 @@ def render_spending(period: Period, entries: Sequence[LedgerEntry], by_merchant:
         ]
     else:
         rows = [
-            (
-                f"{entry.transaction_date:%a} {entry.transaction_date.day:>2} "
-                f"{entry.transaction_date:%b}",
-                _merchant(entry.merchant),
-                format_money(entry.amount_minor, entry.currency),
-            )
+            expense_row(entry.transaction_date, entry.merchant, entry.amount_minor, entry.currency)
             for entry in entries
         ]
     lines.extend(_table(rows))
@@ -217,7 +223,7 @@ def render_status(
             "",
             "  mizu-kakeibo spend month                 this month's expenses",
             "  mizu-kakeibo spend month --by merchant   this month by merchant",
-            "  mizu-kakeibo review-open                 open the review list",
+            "  mizu-kakeibo review                      resolve what needs review",
         ]
     )
     return "\n".join(lines) + "\n"
