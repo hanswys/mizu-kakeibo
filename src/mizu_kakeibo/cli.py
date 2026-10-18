@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from datetime import date, datetime
@@ -31,9 +32,23 @@ from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingResult, ProcessingStatus
 from .review_page import item_url, write_review_page
 from .runlock import RunLockHeldError, run_lock
-from .scheduled import INSTALLED_PROGRAM, SyncReport, System, launch_agent, scheduled_sync
+from .scheduled import (
+    INSTALLED_PROGRAM,
+    MALAYSIA,
+    SyncReport,
+    System,
+    launch_agent,
+    scheduled_sync,
+)
 from .selection import search_query, select_new_messages
-from .storage import LedgerCorrectionError, ReviewResolutionError, Store
+from .spending import last_sync, parse_period, render_spending, render_status
+from .storage import (
+    LIVE_DATABASE,
+    LIVE_LEDGER,
+    LedgerCorrectionError,
+    ReviewResolutionError,
+    Store,
+)
 from .transcript import collect_raw_messages, connector_message_metadata, current_session_transcript
 
 
@@ -57,6 +72,48 @@ def _write_json(value: Any, path: Path | None) -> None:
 
 def _store(args: argparse.Namespace) -> Store:
     return Store(args.database, args.ledger)
+
+
+def _existing_store(args: argparse.Namespace) -> Store:
+    """Open the store for a command that only reads it, without creating a new database."""
+    if not args.database.is_file():
+        raise FileNotFoundError(
+            f"no database at {args.database}; pass --database or run a sync first"
+        )
+    return _store(args)
+
+
+def _today() -> date:
+    return datetime.now(MALAYSIA).date()
+
+
+def command_status(args: argparse.Namespace) -> int:
+    store = _existing_store(args)
+    today = _today()
+    week, month = parse_period("week", today), parse_period("month", today)
+    entries = store.list_transactions(min(week.start, month.start), today)
+    sys.stdout.write(
+        render_status(
+            today,
+            entries,
+            len(store.list_review_items()),
+            last_sync(args.database.parent / "scheduled.log"),
+        )
+    )
+    return 0
+
+
+def command_spend(args: argparse.Namespace) -> int:
+    period = parse_period(args.period, _today())
+    entries = _existing_store(args).list_transactions(period.start, period.end)
+    sys.stdout.write(render_spending(period, entries, args.by == "merchant"))
+    return 0
+
+
+def command_review_open(args: argparse.Namespace) -> int:
+    page = write_review_page(_existing_store(args))
+    subprocess.run(["open", str(page)], check=True)
+    return 0
 
 
 def command_normalize(args: argparse.Namespace) -> int:
@@ -398,13 +455,39 @@ def command_ledger_correct(args: argparse.Namespace) -> int:
 
 
 def _add_storage_options(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--database", type=Path, default=Path("mizu-kakeibo.sqlite3"))
-    parser.add_argument("--ledger", type=Path, default=Path("mizu-kakeibo-ledger.csv"))
+    parser.add_argument("--database", type=Path, default=LIVE_DATABASE)
+    parser.add_argument("--ledger", type=Path, default=LIVE_LEDGER)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="mizu-kakeibo")
+    parser = argparse.ArgumentParser(
+        prog="mizu-kakeibo", description="Run with no command to show today's spending summary."
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    status = subparsers.add_parser(
+        "status", help="show spending today, this week, and this month, and what needs review"
+    )
+    _add_storage_options(status)
+    status.set_defaults(handler=command_status)
+
+    spend = subparsers.add_parser("spend", help="list or total the expenses in a period")
+    spend.add_argument(
+        "period",
+        nargs="?",
+        default="today",
+        help="today, yesterday, week, last-week, month, last-month, year, "
+        "or a date as YYYY-MM-DD, YYYY-MM, or YYYY (default: today)",
+    )
+    spend.add_argument("--by", choices=["merchant"], help="total each merchant instead")
+    _add_storage_options(spend)
+    spend.set_defaults(handler=command_spend)
+
+    review_open = subparsers.add_parser(
+        "review-open", help="refresh the review list and open it in the browser"
+    )
+    _add_storage_options(review_open)
+    review_open.set_defaults(handler=command_review_open)
 
     normalize = subparsers.add_parser("normalize", help="normalize Gmail MCP full messages")
     normalize.add_argument("input", type=Path)
@@ -545,7 +628,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(arguments or ["status"])
     try:
         return int(args.handler(args))
     except (

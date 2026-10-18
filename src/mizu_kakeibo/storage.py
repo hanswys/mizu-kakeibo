@@ -15,6 +15,10 @@ from pathlib import Path
 from .models import AnalysisDecision, ExpenseAnalysisOutput, InboxMessage, Transaction
 from .ollama import RuntimeMetadata
 
+LIVE_DIRECTORY = Path.home() / "mizu-kakeibo-private" / "live"
+LIVE_DATABASE = LIVE_DIRECTORY / "kakeibo.sqlite3"
+LIVE_LEDGER = LIVE_DIRECTORY / "ledger.csv"
+
 
 class AlreadyProcessedError(RuntimeError):
     pass
@@ -37,6 +41,16 @@ class ReviewItem:
     reason: str
     missing_fields: list[str]
     created_at: str
+
+
+@dataclass(frozen=True)
+class LedgerEntry:
+    provider: str
+    message_id: str
+    merchant: str
+    amount_minor: int
+    currency: str
+    transaction_date: date
 
 
 @dataclass(frozen=True)
@@ -349,6 +363,28 @@ class Store:
                 reason=row["reason"],
                 missing_fields=json.loads(row["missing_fields_json"]),
                 created_at=row["processed_at"],
+            )
+            for row in rows
+        ]
+
+    def list_transactions(self, start: date, end: date) -> list[LedgerEntry]:
+        """Return the logged expenses dated from `start` to `end`, both inclusive."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT provider, message_id, merchant, amount_minor, currency, "
+                "transaction_date FROM transactions "
+                "WHERE transaction_date BETWEEN ? AND ? "
+                "ORDER BY transaction_date, provider, message_id",
+                (start.isoformat(), end.isoformat()),
+            ).fetchall()
+        return [
+            LedgerEntry(
+                provider=row["provider"],
+                message_id=row["message_id"],
+                merchant=row["merchant"],
+                amount_minor=row["amount_minor"],
+                currency=row["currency"],
+                transaction_date=date.fromisoformat(row["transaction_date"]),
             )
             for row in rows
         ]

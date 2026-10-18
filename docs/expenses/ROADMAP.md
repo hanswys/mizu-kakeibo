@@ -25,6 +25,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V1-4 | Report each scheduled sync and open the review list | AFK | V1-3 |
 | V1-5 | Confirm the Gmail sign-in lasts past seven days | HITL | None |
 | V1-6 | Verify scheduled processing on real inbox messages | HITL | V1-3, V1-4 |
+| V1.1-1 | Show spending from the terminal without file paths | AFK | Version 1 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -326,7 +327,7 @@ Check that a refresh token issued with the In production, unverified status keep
 
 **Type:** HITL
 
-**Status:** `in-progress` (triaged on 2026-10-18. The user chose to end the check when every item below has been seen, instead of after a fixed week, because the done-today gate leaves only one or two syncs a day and most items can be set up on purpose. It started on 2026-10-18 and does not wait for [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days), which became monitoring after Version 1 that day. Progress on 2026-10-18: the 01:38 scheduled run logged an expense and a non-expense whose decisions and values were checked against each message's sender, subject, and receipt total, pending the user's confirmation. An agent-driven `/expense-sync` that night searched and selected correctly and found nothing new, and its `process` step reported `locked` and recorded nothing while a stand-in process held the run lock; an overlap with a real scheduled sync is still to be seen.)
+**Status:** `complete` (triaged on 2026-10-18 as a checklist that ends when every item has been seen, instead of a fixed week, because the done-today gate leaves only one or two syncs a day. It does not wait for [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days), which became monitoring after Version 1 that day. The 01:38 scheduled run on 2026-10-18 logged an expense and a non-expense whose decisions and values matched each message's sender, subject, and receipt total. An agent-driven `/expense-sync` that night searched and selected correctly and found nothing new, and its `process` step reported `locked` and recorded nothing while a stand-in process held the run lock. Later that day the user accepted Version 1 as complete without the unchecked items below, choosing to find any remaining problems in everyday use: a real review item resolved from the review page, a catch-up after the lid was closed through a window hour, and `/expense-sync` meeting a real scheduled sync's lock. They are covered by tests and the scheduler spikes, not yet by real use.)
 
 **Blocked by:** V1-3, V1-4
 
@@ -336,16 +337,48 @@ Let the installed schedule run by itself on real inbox messages, then have the u
 
 ### Acceptance criteria
 
-- [ ] Scheduled syncs run on real inbox messages with no agent request until every item below has been seen.
+- [x] Scheduled syncs run on real inbox messages with no agent request.
 - [ ] A human verifies an expense, a non-expense, a review item, and the extracted transaction values.
 - [ ] The user resolves a review item from the review page beside its Gmail message.
 - [ ] A day with the laptop closed or asleep for at least one window hour is caught up at the next full wake.
 - [ ] The agent-driven `/expense-sync` still works as a fallback during the check, and it exits without doing anything while a scheduled sync holds the lock.
-- [ ] The user records whether Version 1 is complete, with reasons, or what must be revised.
+- [x] The user records whether Version 1 is complete, with reasons, or what must be revised.
 
 ## Version 1 completion gate
 
 Version 1 is complete when V1-1 to V1-4 and V1-6 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request. [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) continues afterwards as monitoring of the sign-in's lifetime.
+
+The user accepted Version 1 as complete on 2026-10-18, as recorded in [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages). Day-to-day use is described in the [user guide](USER-GUIDE.md).
+
+# Milestone Version 1.1 Everyday Use
+
+## Version 1.1 outcome
+
+Make the running app easy to use day to day: see what was spent without opening the ledger or remembering commands and file paths.
+
+## Issue V1.1-1 Show spending from the terminal without file paths
+
+**Type:** AFK
+
+**Status:** `in-progress` (requested and built on 2026-10-18, after Version 1, when the user found everyday use meant remembering commands. Tested with fixed dates and a temporary database, and read against the live ledger from the branch. It is complete once merged and installed with `uv tool install --reinstall`, and the user has run `mizu-kakeibo` from the installed copy.)
+
+**Blocked by:** Version 1
+
+### What to build
+
+The [spending summaries](MVP.md#spending-summaries): `status`, also run by `mizu-kakeibo` on its own, `spend` with a period and `--by merchant`, `review-open`, and live-file defaults for `--database` and `--ledger`, as defined in the [contract](inbox-expense-contract.md#10-spending-summaries).
+
+### Acceptance criteria
+
+- [x] `mizu-kakeibo` on its own shows today's, this week's, and this month's totals, the review count, and the last scheduled sync.
+- [x] `spend` lists or totals by merchant the expenses in each named period and in a given day, month, or year, with one total per currency and no conversion.
+- [x] Commands default to the live database and ledger, and the reading commands create nothing when the database is missing. Tests never use the real files.
+- [x] `review-open` refreshes and opens the review page.
+- [ ] The user runs `mizu-kakeibo` from the installed copy and sees their spending.
+
+## Version 1.1 completion gate
+
+Version 1.1 is complete when V1.1-1 meets its acceptance criteria. Further everyday-use work is added here only after the MVP changes.
 
 ## Scope changes
 
