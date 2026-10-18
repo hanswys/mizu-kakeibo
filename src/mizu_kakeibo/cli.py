@@ -22,6 +22,9 @@ from .gmail_api import (
     retrieve_new_messages,
     sign_in,
 )
+from .jobs.analyser import OllamaJobAnalyser
+from .jobs.evaluation import evaluate as evaluate_jobs
+from .jobs.evaluation import load_dataset as load_jobs_dataset
 from .models import AnalysisDecision, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
@@ -288,6 +291,16 @@ def command_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_jobs_evaluate(args: argparse.Namespace) -> int:
+    dataset = load_jobs_dataset(_read_json(args.dataset))
+    with OllamaJobAnalyser() as analyser:
+        report = evaluate_jobs(dataset, analyser, runs=args.runs)
+    if args.output is not None:
+        _write_json(report, args.output)
+    _write_json(report["summary"], None)
+    return 0
+
+
 def command_filter_new(args: argparse.Namespace) -> int:
     source = _read_json(args.input)
     message_ids = source.get("message_ids") if isinstance(source, dict) else source
@@ -418,6 +431,14 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument("--runs", type=int, default=3)
     evaluate_parser.add_argument("--output", type=Path)
     evaluate_parser.set_defaults(handler=command_evaluate)
+
+    jobs_evaluate = subparsers.add_parser(
+        "jobs-evaluate", help="score the job-tracker analyser and matching on a private dataset"
+    )
+    jobs_evaluate.add_argument("dataset", type=Path)
+    jobs_evaluate.add_argument("--runs", type=int, default=3)
+    jobs_evaluate.add_argument("--output", type=Path)
+    jobs_evaluate.set_defaults(handler=command_jobs_evaluate)
 
     filter_new = subparsers.add_parser(
         "filter-new", help="filter Gmail search IDs before full-message retrieval"
