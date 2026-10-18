@@ -131,6 +131,7 @@ def test_synthetic_set_end_to_end_scores_every_measure():
         "unnecessary_reviews": 0,
         "missed_reviews": 0,
         "grounding_replacements": 1,
+        "missing_value_replacements": 0,
         "invalid_outputs": 1,
         "operational_failures": 0,
         "context_overflows": 0,
@@ -168,6 +169,7 @@ def test_synthetic_set_end_to_end_scores_every_measure():
         "unnecessary_reviews": 0,
         "missed_reviews": 0,
         "grounding_replacements": 0,
+        "missing_value_replacements": 0,
         "invalid_outputs": 0,
         "operational_failures": 0,
         "context_overflows": 0,
@@ -201,6 +203,7 @@ def test_synthetic_set_end_to_end_scores_every_measure():
         "unnecessary_reviews": 1,
         "missed_reviews": 1,
         "grounding_replacements": 1,
+        "missing_value_replacements": 0,
         "invalid_outputs": 0,
         "operational_failures": 0,
         "context_overflows": 0,
@@ -313,6 +316,39 @@ def test_failures_count_separately_and_never_change_applications():
     assert run["applications"]["missing"] == 1
     assert run["applications"]["correct"] == 2
     assert run["applications"]["review_items"]["analyser"] == 1
+
+
+class GuardingAnalyser(ScriptedAnalyser):
+    """Marks the scripted needs_review results for `guarded` messages as guard replacements."""
+
+    def __init__(self, script, guarded):
+        super().__init__(script)
+        self.guarded = guarded
+        self.last_original_output = None
+
+    def analyse(self, analyser_input):
+        self.last_original_output = None
+        result = super().analyse(analyser_input)
+        if analyser_input.message.received_at in self.guarded:
+            self.last_original_output = '{"decision": "status_update"}'
+        return result
+
+
+def test_missing_value_guard_replacements_are_counted():
+    data, scripted = script_for(dataset(), [{}])
+    review = next(e for e in data.examples if e.expected.decision.value == "needs_review")
+    analyser = GuardingAnalyser({}, {review.message.received_at})
+    analyser.script = scripted.script
+
+    report = evaluate(data, analyser)
+
+    run = report["summary"]["runs"][0]["real"]
+    assert (run["missing_value_replacements"], run["correct_reviews"]) == (1, 1)
+    entry = next(
+        e for e in report["examples"] if e["message_id"] == review.message.source.message_id
+    )
+    assert entry["missing_value_replaced"] == [True]
+    assert entry["error_categories"] == ["missing_value_replaced"]
 
 
 def merged_dataset():

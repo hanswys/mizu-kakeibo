@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 
@@ -10,6 +12,8 @@ from .constants import (
     GROUNDING_FAILURE_REASON,
     JOB_ANALYSIS_INPUT_CONTRACT,
     JOB_ANALYSIS_OUTPUT_CONTRACT,
+    MISSING_VALUE_REASON,
+    PLACEHOLDER_VALUES,
 )
 from .names import company_key, contains_words, fold_text, job_title_key
 
@@ -123,4 +127,53 @@ def ground(analyser_input: JobAnalysisInput, output: JobAnalysisOutput) -> JobAn
         reason=GROUNDING_FAILURE_REASON,
         application=None,
         missing_fields=missing,
+    )
+
+
+def _is_placeholder(value: Any, key: Callable[[str], str]) -> bool:
+    return (
+        not isinstance(value, str)
+        or not key(value)
+        or value.strip().casefold() in PLACEHOLDER_VALUES
+    )
+
+
+def review_missing_values(content: str) -> JobAnalysisOutput | None:
+    """Send an output to review when it reports a missing value without choosing needs_review.
+
+    This runs on the raw output before validation, because such an output violates the
+    invariants. It applies to a status_update or not_application that lists missing fields, and
+    to a status_update whose company or job title is empty or a placeholder. It returns None when
+    it does not apply; the result still passes every other invariant or raises.
+    """
+    value = json.loads(content)
+    if not isinstance(value, dict):
+        return None
+    decision = value.get("decision")
+    listed = value.get("missing_fields")
+    if decision not in (JobDecision.STATUS_UPDATE, JobDecision.NOT_APPLICATION) or not isinstance(
+        listed, list
+    ):
+        return None
+    missing = list(listed)
+    application = value.get("application")
+    if decision == JobDecision.STATUS_UPDATE and isinstance(application, dict):
+        for field, key in (
+            (JobMissingField.COMPANY, company_key),
+            (JobMissingField.JOB_TITLE, job_title_key),
+        ):
+            if _is_placeholder(application.get(field.value), key) and field.value not in missing:
+                missing.append(field.value)
+    if not missing:
+        return None
+    return JobAnalysisOutput.model_validate_json(
+        json.dumps(
+            {
+                **value,
+                "decision": JobDecision.NEEDS_REVIEW.value,
+                "reason": MISSING_VALUE_REASON,
+                "application": None,
+                "missing_fields": missing,
+            }
+        )
     )
