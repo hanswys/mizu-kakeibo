@@ -97,7 +97,7 @@ This changes shared infrastructure. Update the expense contract's Gmail boundary
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `complete` (2026-10-18. Labels confirmed by the user and assembled in the contract's [private dataset format](job-tracker-contract.md#private-dataset-format), outside the repository.)
 
 **Blocked by:** J0-2
 
@@ -107,22 +107,22 @@ Collect a fixed private set of real inbox emails and record human ground truth b
 
 ### Acceptance criteria
 
-- [ ] The set contains between 40 and 80 real emails from LinkedIn, Jobstreet, and employer or hiring-system senders.
-- [ ] Every status appears at least once. `offered` may be covered by synthetic emails, clearly marked and kept separate in scoring.
-- [ ] The set includes non-application emails, both job-related (alerts, recommendations, recruiter outreach) and unrelated to jobs.
-- [ ] The set includes emails missing a company or job title, and at least three applications updated by several emails.
-- [ ] The set includes an application whose company or job title is written differently across emails, and a re-application after a rejection.
-- [ ] Where available, the set includes two roles at the same company and emails received out of status order.
-- [ ] Every email has a human-labelled decision, plus company, job title, and status for each `status_update`.
-- [ ] The expected final application list is recorded.
-- [ ] Ground truth is recorded before model outputs are reviewed.
-- [ ] No real email content, identifiers, or private evaluation data enters the repository.
+- [x] The set contains between 40 and 80 real emails from LinkedIn, Jobstreet, and employer or hiring-system senders. It has 70 real emails, all received on or after 2026-04-14: 18 LinkedIn, 20 Jobstreet, 28 employer or hiring-system, and 4 unrelated senders.
+- [x] Every status appears at least once. `offered` may be covered by synthetic emails, clearly marked and kept separate in scoring. Real `status_update` labels: 23 `applied`, 6 `viewed`, 4 `interview`, 13 `rejected`. 4 synthetic emails add 3 `offered` and 1 `rejected`, including one contradictory offer after a rejection.
+- [x] The set includes non-application emails, both job-related (alerts, recommendations, recruiter outreach) and unrelated to jobs. Real decisions: 46 `status_update`, 17 `not_application` (13 job-related, 4 unrelated), 7 `needs_review`.
+- [x] The set includes emails missing a company or job title, and at least three applications updated by several emails. 6 of the 7 `needs_review` emails lack a job title, and 2 lack a status. 12 applications have two or more emails.
+- [x] The set includes an application whose company or job title is written differently across emails, and a re-application after a rejection. 2 applications are written differently across emails, and 1 is re-applied for after a rejection.
+- [x] Where available, the set includes two roles at the same company and emails received out of status order. 3 companies have two or more roles. No real email received out of status order was found in the window.
+- [x] Every email has a human-labelled decision, plus company, job title, and status for each `status_update`.
+- [x] The expected final application list is recorded. Real: 26 applications, 9 `applied`, 3 `viewed`, 2 `interview`, 12 `rejected`. Synthetic: 3 applications, 2 `offered`, 1 `rejected`.
+- [x] Ground truth is recorded before model outputs are reviewed.
+- [x] No real email content, identifiers, or private evaluation data enters the repository.
 
 ## Issue J0-5 Evaluate the status analyser and matching
 
 **Type:** HITL
 
-**Status:** `in-progress` (2026-10-18. The evaluator is built: `mizu-kakeibo jobs-evaluate` in the `mizu_kakeibo.jobs` package, tested on synthetic fixtures only. The real run and the decision wait for J0-4's dataset, assembled in the contract's [private dataset format](job-tracker-contract.md#private-dataset-format).)
+**Status:** `in-progress` (2026-10-18. The evaluator, `mizu-kakeibo jobs-evaluate` in the `mizu_kakeibo.jobs` package, ran three times on J0-4's private dataset with prompt `jobs-v0.1`, and the user chose `revise`; see [the decision below](#j0-5-decision).)
 
 **Blocked by:** J0-3, J0-4
 
@@ -132,15 +132,36 @@ Run every email through the contract's analyser configuration, then replay the v
 
 ### Acceptance criteria
 
-- [ ] Every email receives analysis through the same input and output contract.
-- [ ] The report scores decision accuracy, plus company, job title, and status accuracy, separately and as an exact match.
-- [ ] Emails missing a company or job title return `needs_review` and never create or update an application.
-- [ ] Invalid output or model failure cannot create or update an application.
-- [ ] The resulting application list is compared with the expected list, counting merged, split, missing, and wrong-status applications, and the number of likely-match review items.
-- [ ] Repeated runs measure consistency.
-- [ ] Errors are recorded as sanitized categories without personal content.
-- [ ] Model, prompt, contract, and runtime versions are recorded for reproducibility.
-- [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
+- [x] Every email receives analysis through the same input and output contract.
+- [x] The report scores decision accuracy, plus company, job title, and status accuracy, separately and as an exact match.
+- [ ] Emails missing a company or job title return `needs_review` and never create or update an application. None of the 6 created or updated an application, but only 2 returned `needs_review`; the other 4 were invalid outputs.
+- [x] Invalid output or model failure cannot create or update an application.
+- [x] The resulting application list is compared with the expected list, counting merged, split, missing, and wrong-status applications, and the number of likely-match review items.
+- [x] Repeated runs measure consistency.
+- [x] Errors are recorded as sanitized categories without personal content.
+- [x] Model, prompt, contract, and runtime versions are recorded for reproducibility.
+- [x] The user records a `proceed`, `revise`, or `stop` decision with reasons: `revise` on 2026-10-18, because non-application emails created applications; see [the decision](#j0-5-decision).
+
+### J0-5 decision
+
+`revise`, recorded by the user on 2026-10-18 after one three-run evaluation of 70 real and 4 synthetic emails. The configuration was `qwen3.5:4b-q4_K_M` on Ollama 0.40.5, prompt `jobs-v0.1`, contract `jobs-v0`, at temperature 0 with seed 42. All three runs were identical: 70 of 70 real decisions and outputs were consistent, and the replayed application lists matched. Median latency was 6.6 s per email, p95 10.7 s, and the model used 3.2 GiB, all on the GPU.
+
+What works:
+
+- Every one of the 46 real status updates was detected, with 46 correct companies, 40 correct job titles, 45 correct statuses, and 39 exact matches.
+- No invalid output or failure created or updated an application, and there were no operational failures or context overflows.
+- The 4 synthetic emails were all correct, and the contradictory offer after a rejection went to review with the status unchanged.
+
+What must change before Version 0.5, from the real set:
+
+- **False status updates.** 4 non-applications or review cases were reported as status updates, which created 4 extra applications: a bank application, an interview survey, a digest of several applications, and a canceled recruitment.
+- **Missing job titles.** 4 of the 6 emails lacking a job title were invalid outputs. Three were status updates with an empty title and the field listed as missing, and one was `not_application` with missing fields, as in the smoke run.
+- **Extra title text.** Job titles kept extra text that the contract excludes: requisition IDs and location suffixes. On one multi-email application this sent the later updates to likely-match review, leaving the application at its first status.
+- **Status wording.** One hiring-system "reviewing" email was read as `viewed`.
+
+Real decisions were 60 of 70 correct. Of the 26 expected applications, 22 were correct and 2 had the wrong status. There were 4 extra, 1 split, 1 missing, and 0 merged. Review items were 4 analyser and 4 likely-match. 2 grounding-check replacements turned unsupported titles into review items. The split application is the name variant that needs a confirmed alias, and the missing one is the containment trap held for likely-match review. Both follow the [matching rules](job-tracker-contract.md#6-matching).
+
+Next: revise the prompt once for these error categories, version it, and rerun the same dataset unchanged. The user will consider `proceed` if the rerun has no false status updates, no invalid outputs on emails missing a job title, at least 44 of 46 correct job titles, and the multi-email application held back by extra title text at its expected status. The name-variant split and the likely-match review follow the matching rules and do not block `proceed`.
 
 ## Version 0 completion gate
 
