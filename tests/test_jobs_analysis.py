@@ -15,8 +15,14 @@ from mizu_kakeibo.jobs.constants import (
     JOB_ANALYSIS_OUTPUT_CONTRACT,
     JOBS_PROMPT_VERSION,
     JOBS_SYSTEM_PROMPT,
+    MISSING_VALUE_REASON,
 )
-from mizu_kakeibo.jobs.models import JobAnalysisInput, JobAnalysisOutput, ground
+from mizu_kakeibo.jobs.models import (
+    JobAnalysisInput,
+    JobAnalysisOutput,
+    ground,
+    review_missing_values,
+)
 from mizu_kakeibo.jobs.names import LEGAL_FORMS, company_key, fold_text, job_title_key
 from mizu_kakeibo.models import AnalysisMessage
 from mizu_kakeibo.ollama import ContextOverflowError, MessageAnalysisError, TokenUsage
@@ -142,6 +148,83 @@ def test_needs_review_may_list_each_missing_value_once() -> None:
         output(decision="needs_review", missing_fields=fields)
     )
     assert [field.value for field in result.missing_fields] == fields
+
+
+@pytest.mark.parametrize(
+    ("content", "missing"),
+    [
+        (
+            output(
+                application={"company": "Example", "job_title": "", "status": "applied"},
+                missing_fields=["job_title"],
+            ),
+            ["job_title"],
+        ),
+        (
+            output(application={"company": "Example", "job_title": "null", "status": "rejected"}),
+            ["job_title"],
+        ),
+        (
+            output(application={"company": " ", "job_title": "N/A", "status": "interview"}),
+            ["company", "job_title"],
+        ),
+        (
+            output(application={"company": "Example", "job_title": None, "status": "applied"}),
+            ["job_title"],
+        ),
+        (output(missing_fields=["status"]), ["status"]),
+        (
+            output(
+                decision="not_application",
+                application=None,
+                missing_fields=["company", "job_title"],
+            ),
+            ["company", "job_title"],
+        ),
+        (
+            output(
+                application={"company": "Unknown", "job_title": "", "status": "applied"},
+                missing_fields=["job_title"],
+            ),
+            ["job_title", "company"],
+        ),
+    ],
+)
+def test_reported_missing_values_go_to_review(content, missing) -> None:
+    result = review_missing_values(content)
+    assert result is not None
+    assert result.decision.value == "needs_review"
+    assert result.application is None
+    assert [field.value for field in result.missing_fields] == missing
+    assert result.reason == MISSING_VALUE_REASON
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        output(),
+        output(decision="not_application", application=None),
+        output(decision="needs_review", application=None, missing_fields=["job_title"]),
+        output(decision="needs_review", missing_fields=["job_title"]),
+        output(decision="hired", missing_fields=["company"]),
+        "[]",
+    ],
+)
+def test_missing_value_guard_leaves_other_outputs_alone(content) -> None:
+    assert review_missing_values(content) is None
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        output(missing_fields=["merchant"]),
+        output(missing_fields=["company"], extra="field"),
+        output(decision="not_application", application=None, missing_fields=["job_title"] * 2),
+    ],
+)
+def test_guarded_outputs_must_still_meet_the_other_invariants(content) -> None:
+    with pytest.raises(ValidationError):
+        review_missing_values(content)
 
 
 def analyser_input(subject="Your application", text="Body") -> JobAnalysisInput:
@@ -271,8 +354,32 @@ def test_jobs_prompt_is_the_contract_prompt_verbatim() -> None:
     assert f"| Prompt version | `{JOBS_PROMPT_VERSION}` |" in contract
 
 
+def test_jobs_analyser_sends_reported_missing_values_to_review() -> None:
+    content = output(
+        application={"company": "Example", "job_title": "", "status": "applied"},
+        missing_fields=["job_title"],
+    )
+    client, _ = client_for(content)
+    analyser = OllamaJobAnalyser(client=client)
+
+    result = analyser.analyse(analyser_input())
+
+    assert result.decision.value == "needs_review"
+    assert analyser.last_original_output == content
+
+
+def test_jobs_analyser_keeps_no_original_for_an_unguarded_output() -> None:
+    client, _ = client_for(output())
+    analyser = OllamaJobAnalyser(client=client)
+    analyser.last_original_output = "stale"
+
+    analyser.analyse(analyser_input())
+
+    assert analyser.last_original_output is None
+
+
 def test_jobs_analyser_rejects_invalid_output() -> None:
-    client, _ = client_for(output(missing_fields=["company"]))
+    client, _ = client_for(output(missing_fields=["merchant"]))
     with pytest.raises(MessageAnalysisError, match="output contract"):
         OllamaJobAnalyser(client=client).analyse(analyser_input())
 

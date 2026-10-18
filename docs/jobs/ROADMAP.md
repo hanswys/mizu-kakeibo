@@ -122,7 +122,7 @@ Collect a fixed private set of real inbox emails and record human ground truth b
 
 **Type:** HITL
 
-**Status:** `in-progress` (2026-10-18. The evaluator, `mizu-kakeibo jobs-evaluate` in the `mizu_kakeibo.jobs` package, ran three times on J0-4's private dataset with prompt `jobs-v0.1`, and the user chose `revise`; see [the decision below](#j0-5-decision).)
+**Status:** `complete` (2026-10-18. The evaluator, `mizu-kakeibo jobs-evaluate` in the `mizu_kakeibo.jobs` package, ran three times on J0-4's private dataset with prompt `jobs-v0.1`, and the user chose `revise`. After prompt `jobs-v0.2` and the contract's [missing-value guard](job-tracker-contract.md#missing-value-guard), a second three-run evaluation on the unchanged dataset led the user to choose `proceed`; see [the decisions below](#j0-5-decision).)
 
 **Blocked by:** J0-3, J0-4
 
@@ -134,13 +134,13 @@ Run every email through the contract's analyser configuration, then replay the v
 
 - [x] Every email receives analysis through the same input and output contract.
 - [x] The report scores decision accuracy, plus company, job title, and status accuracy, separately and as an exact match.
-- [ ] Emails missing a company or job title return `needs_review` and never create or update an application. None of the 6 created or updated an application, but only 2 returned `needs_review`; the other 4 were invalid outputs.
+- [x] Emails missing a company or job title return `needs_review` and never create or update an application. With `jobs-v0.1`, only 2 of the 6 returned `needs_review` and the other 4 were invalid outputs. With `jobs-v0.2`, all 6 returned `needs_review`, 4 of them through the missing-value guard, and none created or updated an application.
 - [x] Invalid output or model failure cannot create or update an application.
 - [x] The resulting application list is compared with the expected list, counting merged, split, missing, and wrong-status applications, and the number of likely-match review items.
 - [x] Repeated runs measure consistency.
 - [x] Errors are recorded as sanitized categories without personal content.
 - [x] Model, prompt, contract, and runtime versions are recorded for reproducibility.
-- [x] The user records a `proceed`, `revise`, or `stop` decision with reasons: `revise` on 2026-10-18, because non-application emails created applications; see [the decision](#j0-5-decision).
+- [x] The user records a `proceed`, `revise`, or `stop` decision with reasons: `revise` on 2026-10-18, because non-application emails created applications, then `proceed` the same day after the second run; see [the decisions](#j0-5-decision).
 
 ### J0-5 decision
 
@@ -162,6 +162,22 @@ What must change before Version 0.5, from the real set:
 Real decisions were 60 of 70 correct. Of the 26 expected applications, 22 were correct and 2 had the wrong status. There were 4 extra, 1 split, 1 missing, and 0 merged. Review items were 4 analyser and 4 likely-match. 2 grounding-check replacements turned unsupported titles into review items. The split application is the name variant that needs a confirmed alias, and the missing one is the containment trap held for likely-match review. Both follow the [matching rules](job-tracker-contract.md#6-matching).
 
 Next: revise the prompt once for these error categories, version it, and rerun the same dataset unchanged. The user will consider `proceed` if the rerun has no false status updates, no invalid outputs on emails missing a job title, at least 44 of 46 correct job titles, and the multi-email application held back by extra title text at its expected status. The name-variant split and the likely-match review follow the matching rules and do not block `proceed`.
+
+#### Second run: `proceed`
+
+`proceed`, recorded by the user on 2026-10-18 after a second three-run evaluation of the same 70 real and 4 synthetic emails, unchanged. The configuration differed only in prompt `jobs-v0.2` and the new [missing-value guard](job-tracker-contract.md#missing-value-guard), which sends an output that reports a missing value to review instead of counting it as invalid. All three runs were identical again. Median latency was 7.1 s per email, p95 12.0 s. Prompts had a median of 1,197 tokens and a maximum of 2,044, within the 12,288 context.
+
+Against the bar:
+
+- **False status updates:** 0, down from 4.
+- **Invalid outputs on emails missing a job title:** 0, down from 4. All 6 such emails returned `needs_review`.
+- **Job titles:** 44 of 46 correct, up from 40. One title kept a location in brackets, and one status update was missed.
+- **The multi-email application held back by extra title text:** it ended at its expected status.
+- **No new errors among the 46 status updates:** not met. One rejection, the only email of its application, was read as `not_application`, because it also mentioned other roles and the new rule for emails listing several applications caught it. That application is missing from the list. Narrowing the rule sent the email to review instead and broke a company name on another email, so the evaluated prompt was kept.
+
+Real decisions were 67 of 70 correct, up from 60. Of the 26 expected applications, 23 were correct and none had the wrong status. There were 0 extra, 0 merged, 1 split, and 2 missing: the name-variant split and the containment trap from the first run, which follow the matching rules, and the missed rejection. Review items were 9 analyser and 2 likely-match. 2 non-application emails went to review unnecessarily: a recruiter email and an unfinished-application reminder that the guard sent to review because it listed a missing status. There were no grounding replacements, invalid outputs, operational failures, or context overflows. The 4 synthetic emails were all correct again.
+
+The user chose `proceed` with the one missed rejection, because the other four conditions were met, every other measure improved, and further wording changes on the 4B model traded one error for another. A missed status update is silent, because `not_application` emails are not reviewed, so everyday use in Version 0.5 is where a repeat would show. The rules came from this same dataset, so the rerun shows these failures are fixed, not that the rules hold on new mail.
 
 ## Version 0 completion gate
 

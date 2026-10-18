@@ -1,7 +1,7 @@
 """The Version 0 job-tracker evaluation (contract §11).
 
-Every example is normalized preferring HTML, analysed, validated, and grounded, then the results
-are replayed in received order on an empty in-memory store. Nothing is written to disk.
+Every example is normalized preferring HTML, analysed, guarded, validated, and grounded, then the
+results are replayed in received order on an empty in-memory store. Nothing is written to disk.
 """
 
 from __future__ import annotations
@@ -178,6 +178,7 @@ class Observation:
     failure: str | None
     latency_ms: float
     usage: TokenUsage | None = None
+    missing_value_replaced: bool = False
 
     @property
     def decision(self) -> str | None:
@@ -220,6 +221,7 @@ def _observe(
         None,
         latency_ms,
         getattr(analyser, "last_usage", None),
+        getattr(analyser, "last_original_output", None) is not None,
     )
 
 
@@ -235,6 +237,8 @@ def _error_categories(expected: ExpectedOutcome, observed: Observation) -> list[
     if observed.failure:
         return [observed.failure]
     categories = ["grounding_replaced"] if observed.grounding_replaced else []
+    if observed.missing_value_replaced:
+        categories.append("missing_value_replaced")
     wanted = expected.decision.value
     actual = observed.decision
     if actual == "status_update" and wanted != "status_update":
@@ -373,6 +377,7 @@ def _run_summary(
         "unnecessary_reviews": categories["unnecessary_review"],
         "missed_reviews": categories["missed_review"],
         "grounding_replacements": categories["grounding_replaced"],
+        "missing_value_replacements": categories["missing_value_replaced"],
         "invalid_outputs": categories["invalid_output"],
         "operational_failures": categories["operational_failure"],
         "context_overflows": categories["context_overflow"],
@@ -485,6 +490,7 @@ def evaluate(
                 "expected_application_key": example.expected.application_key,
                 "observed": [o.label() for o in observed],
                 "grounding_replaced": [o.grounding_replaced for o in observed],
+                "missing_value_replaced": [o.missing_value_replaced for o in observed],
                 "replay": [_outcome_label(outcome) for outcome in outcomes],
                 "application_ids": [
                     outcome.link.application_id if outcome and outcome.link else None
