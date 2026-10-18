@@ -381,7 +381,7 @@ The [spending summaries](MVP.md#spending-summaries): `status`, also run by `mizu
 
 **Type:** AFK
 
-**Status:** `in-progress` (requested on 2026-10-18, when the user found the review page clunky beside the terminal commands. The user chose to remove the review page entirely, to show the first lines of a message with a key for the whole text, and to follow this with a numbered picker for correcting expenses, deferred in the MVP. Built on 2026-10-18 and tested with scripted input and a temporary database, and run once in a pseudo-terminal, where interrupts and end of input saved nothing. Installed the same day, when the leftover live page was deleted and the user confirmed the dialog's `Review in Terminal` button. It is complete once the user resolves a real review item; the live database had none on 2026-10-18.)
+**Status:** `complete` (requested on 2026-10-18, when the user found the review page clunky beside the terminal commands. The user chose to remove the review page entirely, to show the first lines of a message with a key for the whole text, and to follow this with a numbered picker for correcting expenses, deferred in the MVP. Built on 2026-10-18 and tested with scripted input and a temporary database, and run once in a pseudo-terminal, where interrupts and end of input saved nothing. Installed the same day, when the leftover live page was deleted and the user confirmed the dialog's `Review in Terminal` button. The live database had no review item that day, so the user resolved a mock one instead, which the user accepted as the final check.)
 
 **Blocked by:** V1.1-1
 
@@ -398,7 +398,7 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 - [x] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
 - [x] A scheduled run with review items writes `review.command`, and clicking `Review in Terminal` in the dialog after the run has exited starts `review` in Terminal. Checked by hand on the laptop on 2026-10-18: a one-off LaunchAgent with the scheduled run's `Background` process type wrote the script and showed the dialog for a test database, then exited, and the user clicked the button and saw `review` start in Terminal. The fallback was not needed.
 - [x] No code writes `review.html`, and `review-open` no longer exists. The leftover live `review.html` and its lock are deleted by hand after installing.
-- [ ] The user resolves a real review item with `review` from the installed copy.
+- [x] The user resolves a real review item with `review` from the installed copy. On 2026-10-18 the user resolved a mock item in a separate test database as an expense, and a fresh read found the resolution, the transaction, and the ledger row saved, with the original analysis kept and nothing left to review.
 
 ## Version 1.1 completion gate
 
