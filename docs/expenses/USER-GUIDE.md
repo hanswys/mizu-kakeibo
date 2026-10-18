@@ -11,7 +11,7 @@ Everything stays on the laptop, under `~/mizu-kakeibo-private/live/`:
 | File | What it is |
 | --- | --- |
 | `ledger.csv` | Your expenses: merchant, amount in the currency's smallest unit (`2400` MYR is RM24.00), currency, and date, one row per Gmail message |
-| `review.html` | The messages waiting for your decision, each with a link to open it in Gmail |
+| `review.command` | Starts `mizu-kakeibo review` in Terminal when you click **Review in Terminal** |
 | `kakeibo.sqlite3` | Every decision the app has made; you never need to open it |
 | `scheduled.log` | One line per hourly attempt, for troubleshooting |
 
@@ -19,7 +19,7 @@ Everything stays on the laptop, under `~/mizu-kakeibo-private/live/`:
 
 1. **The first sync of the day.** At the first hour from 08:00 when the laptop is open and awake, the sync reads up to 25 new messages. Promotions, social updates, and job alerts are skipped without being read.
 2. **The notification.** If it analysed anything, a notification says how many messages it checked and how many were expenses, to review, or failed, for example `1 expense · 2 to review · 0 failed`. macOS shows it as coming from Script Editor, and a Focus mode may hold it in Notification Center. A sync with nothing new stays silent.
-3. **The dialog.** If anything needs review or failed, a dialog also appears. Click **Open review list** to see the review page, or **Dismiss** to deal with it later. It closes by itself after an hour.
+3. **The dialog.** If anything needs review or failed, a dialog also appears. Click **Review in Terminal** to resolve the messages now, or **Dismiss** to deal with them later. It closes by itself after an hour.
 4. **The rest of the day.** Once a sync finishes with no failures and nothing left over, later hours do nothing until tomorrow. Mail that arrives after that is picked up the next morning. If a sync failed or left messages for later, the next hour continues.
 
 A sync is skipped, and tried again the next hour, while the lid is closed, the laptop is asleep, or it is on battery below 20%. An hour missed that way runs when you next open the laptop, or at the next hour.
@@ -56,22 +56,31 @@ You can also ask Claude Code in this repository, for example "how much did I spe
 
 ## Reviewing a message
 
-Run `mizu-kakeibo review-open`, or click **Open review list** in the dialog. Each item shows why the app was unsure, which values it could not find, and an **Open in Gmail** link. Read the message in Gmail, then decide.
+Run `mizu-kakeibo review`, or click **Review in Terminal** in the dialog. It lists the waiting messages, numbered:
 
-The easiest way is to ask Claude Code in this repository, for example "resolve the Shopee review item as an expense of RM35.90 on 18 October". It runs the command for you and the page updates.
+```text
+2 messages to review
 
-To do it yourself in Terminal, copy the message ID from the review page:
+  1  Sat 17 Oct  Shopee         Your order is confirmed  missing amount
+  2  Sun 18 Oct  Example Bank   Payment notice           missing merchant, date
 
-```sh
-# Not an expense
-mizu-kakeibo review-resolve gmail MESSAGE_ID not_expense
-
-# An expense: amount in sen, date as YYYY-MM-DD
-mizu-kakeibo review-resolve gmail MESSAGE_ID expense \
-  --merchant "Shopee" --amount-minor 3590 --currency MYR --transaction-date 2026-10-18
+Number to review, or q to quit:
 ```
 
-Every command uses the files in `~/mizu-kakeibo-private/live/` unless you pass `--database` and `--ledger`.
+Type a number to see that message: its sender, subject, received time, why the app was unsure, and its first 15 lines. Then press a key and Enter:
+
+| Key | Does |
+| --- | --- |
+| `e` | It is an expense. You are asked for the merchant, currency, amount, and date in turn; press Enter to take the value in brackets. Type the amount as the receipt shows it, such as `35.90`. |
+| `n` | It is not an expense |
+| `m` | Shows the whole message; press `q` to come back |
+| `g` | Opens the message in Gmail |
+| `s` | Skips it for now |
+| `q` | Quits |
+
+Nothing is saved until you answer `y` to `Save?`, because a resolved message cannot go back to review. After each message the next one is shown, and after the last the list is shown again. Quitting, `Ctrl-C`, or closing the window saves nothing for the message on screen.
+
+You can also ask Claude Code in this repository, for example "resolve the Shopee review item as an expense of RM35.90 on 18 October".
 
 ## Fixing a logged expense
 

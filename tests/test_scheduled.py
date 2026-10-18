@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import plistlib
+import shlex
+import subprocess
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -67,9 +69,9 @@ class FakeSystem:
         self._check_lock()
         self.notifications.append((subtitle, text))
 
-    def show_dialog(self, text, review_page):
+    def show_dialog(self, text, review_script):
         self._check_lock()
-        self.dialogs.append((text, review_page))
+        self.dialogs.append((text, review_script))
 
     def _check_lock(self):
         try:
@@ -150,7 +152,7 @@ def run(tmp_path, monkeypatch):
         records=records,
         log=log,
         silent=silent,
-        page=live / "review.html",
+        script=live / "review.command",
         main=lambda: cli.main(argv),
     )
 
@@ -218,7 +220,7 @@ def test_a_run_that_finds_the_lock_held_logs_it_and_records_nothing(run, hold_ru
     assert run.fake.requests == []
     assert run.system.kept_awake == 0
     assert run.silent()
-    assert not run.page.exists()
+    assert not run.script.exists()
 
 
 def test_a_done_day_is_not_run_again_but_the_next_day_is(run) -> None:
@@ -492,16 +494,14 @@ def test_a_sync_that_analysed_messages_notifies_its_counts_without_a_dialog(run)
     ]
     assert run.system.dialogs == []
     assert run.system.shown_under_lock == 0
-    assert "Nothing to review." in run.page.read_text()
+    assert not run.script.exists()
 
 
-def test_a_sync_with_nothing_new_is_silent_but_rewrites_the_review_page(run, capsys) -> None:
+def test_a_sync_with_nothing_new_is_silent(run, capsys) -> None:
     review_the_friend_message(run)
-    assert cli.main(["sync", *run.argv[1:]]) == 0  # a manual sync rewrites the page too
+    assert cli.main(["sync", *run.argv[1:]]) == 0
     capsys.readouterr()
-    assert "1 item to review." in run.page.read_text()
     assert run.silent()
-    run.page.unlink()
 
     assert run.main() == 0
     [record] = run.records()
@@ -509,10 +509,10 @@ def test_a_sync_with_nothing_new_is_silent_but_rewrites_the_review_page(run, cap
     assert record["notification"] is False
     assert record["dialog"] is None
     assert run.silent()
-    assert "1 item to review." in run.page.read_text()
+    assert sorted(path.name for path in run.live.iterdir() if "review" in path.name) == []
 
 
-def test_review_items_show_a_dialog_that_opens_the_review_page(run) -> None:
+def test_review_items_show_a_dialog_that_starts_review_in_terminal(run) -> None:
     review_the_friend_message(run)
     assert run.main() == 0
     [record] = run.records()
@@ -520,16 +520,39 @@ def test_review_items_show_a_dialog_that_opens_the_review_page(run) -> None:
     assert run.system.notifications == [
         ("Checked 2 new messages", "1 expense · 1 to review · 0 failed")
     ]
-    assert run.system.dialogs == [("Sync finished: 1 expense, 1 to review, 0 failed.", run.page)]
+    assert run.system.dialogs == [("Sync finished: 1 expense, 1 to review, 0 failed.", run.script)]
     assert run.system.shown_under_lock == 0
 
-    page = run.page.read_text()
-    assert "Fictional &lt;b&gt;refund&lt;/b&gt; &amp; &quot;policy&quot; review" in page
-    assert "Missing fields: amount_minor" in page
-    assert "<script" not in page
-    for private in (SNIPPET, SUBJECT, "Example Friend", "friend@example.invalid"):
-        assert private not in page
-    assert run.page.stat().st_mode & 0o777 == 0o600
+    script = run.script.read_text()
+    command = [scheduled.INSTALLED_PROGRAM, "review", "--database", run.live / "kakeibo.sqlite3"]
+    command += ["--ledger", run.live / "ledger.csv"]
+    assert script == f"#!/bin/sh\nexec {shlex.join(str(part) for part in command)}\n"
+    for private in (SNIPPET, SUBJECT, "Example Friend", "friend@example.invalid", "m3"):
+        assert private not in script
+    assert run.script.stat().st_mode & 0o777 == 0o700
+    assert not (run.live / "review.html").exists()
+
+
+def test_the_review_script_quotes_its_paths(tmp_path) -> None:
+    live = tmp_path / "it's private"
+    program = tmp_path / "bin" / "mizu kakeibo"
+    program.parent.mkdir()
+    program.write_text('#!/bin/sh\nfor argument in "$@"; do echo "$argument"; done\n')
+    program.chmod(0o700)
+    (live).mkdir()
+    (live / scheduled.REVIEW_SCRIPT).write_text("old")
+
+    script = scheduled.write_review_script(program, live / "kakeibo.sqlite3", live / "l $x.csv")
+    assert script == live / "review.command"
+    output = subprocess.run([str(script)], capture_output=True, text=True, check=True).stdout
+    assert output.splitlines() == [
+        "review",
+        "--database",
+        str(live / "kakeibo.sqlite3"),
+        "--ledger",
+        str(live / "l $x.csv"),
+    ]
+    assert [path.name for path in live.iterdir()] == ["review.command"]
 
 
 def test_failed_messages_show_a_dialog_saying_they_are_retried(run) -> None:
@@ -542,7 +565,7 @@ def test_failed_messages_show_a_dialog_saying_they_are_retried(run) -> None:
         (
             "Sync finished: 0 expenses, 0 to review, 1 failed. "
             "Failed messages are retried next hour.",
-            run.page,
+            run.script,
         )
     ]
 
@@ -556,7 +579,7 @@ def test_a_run_that_fails_before_processing_shows_its_dialog_once_a_day(run, mon
     assert run.system.dialogs == [(FAILURE_DIALOGS["sign_in"], None)]
     assert "mizu-kakeibo gmail-sign-in" in FAILURE_DIALOGS["sign_in"]
     assert "--replace" not in FAILURE_DIALOGS["sign_in"]
-    assert not run.page.exists()
+    assert not run.script.exists()
 
     run.clock.time += timedelta(hours=1)
     assert run.main() == 1
@@ -603,9 +626,9 @@ def test_the_notification_passes_its_values_as_arguments(monkeypatch) -> None:
     assert options["timeout"] == 10
 
 
-@pytest.mark.parametrize("page", [None, "review.html"])
+@pytest.mark.parametrize("review", [None, "review.command"])
 def test_a_dialog_runs_in_its_own_session_and_is_not_waited_for(
-    monkeypatch, tmp_path, page
+    monkeypatch, tmp_path, review
 ) -> None:
     started = []
 
@@ -617,17 +640,20 @@ def test_a_dialog_runs_in_its_own_session_and_is_not_waited_for(
             raise AssertionError("the run waited for its dialog")
 
     monkeypatch.setattr(scheduled.subprocess, "Popen", Popen)
-    review_page = None if page is None else tmp_path / page
-    scheduled.System().show_dialog("Sync finished.", review_page)
+    review_script = None if review is None else tmp_path / review
+    scheduled.System().show_dialog("Sync finished.", review_script)
     [(command, options)] = started
-    script = scheduled.FAILURE_DIALOG_SCRIPT if page is None else scheduled.REVIEW_DIALOG_SCRIPT
+    script = scheduled.FAILURE_DIALOG_SCRIPT if review is None else scheduled.REVIEW_DIALOG_SCRIPT
     expected = ["Mizu Kakeibo", "Sync finished.", "3600"]
-    if review_page is not None:
-        expected.append(str(review_page))
+    if review_script is not None:
+        expected.append(str(review_script))
     assert command == ["/usr/bin/osascript", "-e", script, *expected]
     assert options["start_new_session"] is True
-    assert ("Open review list" in script) is (page is not None)
-    assert "quoted form of (item 4 of argv)" in scheduled.REVIEW_DIALOG_SCRIPT
+    assert ("Review in Terminal" in script) is (review is not None)
+    assert (
+        '"/usr/bin/open -a Terminal " & quoted form of (item 4 of argv)'
+        in scheduled.REVIEW_DIALOG_SCRIPT
+    )
 
 
 def test_the_launch_agent_runs_the_installed_command_every_hour(tmp_path, capsysbinary) -> None:

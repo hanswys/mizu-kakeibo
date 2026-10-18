@@ -4,8 +4,10 @@ import json
 import os
 import plistlib
 import re
+import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
@@ -32,6 +34,7 @@ RUNTIME_START_SECONDS = 30
 RECORD_DAYS = 90
 RUN_RECORD = "run.json"
 RUN_NAME_FORMAT = "%Y%m%d-%H%M%S"
+REVIEW_SCRIPT = "review.command"
 _RUN_NAME = re.compile(r"^(\d{8}-\d{6})(?:-\d+)?$")
 GROUPS = ("expense", "not_expense", "needs_review", "skipped", "filtered", "failed", "deferred")
 ANALYSED = ("expense", "not_expense", "needs_review", "failed")
@@ -51,10 +54,10 @@ REVIEW_DIALOG_SCRIPT = "\n".join(
     [
         "on run argv",
         "set reply to display dialog (item 2 of argv) with title (item 1 of argv)"
-        ' buttons {"Dismiss", "Open review list"} default button "Open review list"'
+        ' buttons {"Dismiss", "Review in Terminal"} default button "Review in Terminal"'
         " giving up after (item 3 of argv as integer)",
-        'if button returned of reply is "Open review list" then'
-        ' do shell script "/usr/bin/open " & quoted form of (item 4 of argv)',
+        'if button returned of reply is "Review in Terminal" then'
+        ' do shell script "/usr/bin/open -a Terminal " & quoted form of (item 4 of argv)',
         "end run",
     ]
 )
@@ -208,16 +211,16 @@ class System:
                 check=False,
             )
 
-    def show_dialog(self, text: str, review_page: Path | None) -> None:
+    def show_dialog(self, text: str, review_script: Path | None) -> None:
         """Show a dialog without waiting for it.
 
         launchd kills a job's remaining process group when the job exits, and starts no
         new instance while it runs, so the dialog gets its own session and outlives the run.
         """
-        script = FAILURE_DIALOG_SCRIPT if review_page is None else REVIEW_DIALOG_SCRIPT
+        script = FAILURE_DIALOG_SCRIPT if review_script is None else REVIEW_DIALOG_SCRIPT
         arguments = [TITLE, text, str(DIALOG_SECONDS)]
-        if review_page is not None:
-            arguments.append(str(review_page))
+        if review_script is not None:
+            arguments.append(str(review_script))
         with suppress(OSError):
             subprocess.Popen(
                 [OSASCRIPT, "-e", script, *arguments],
@@ -356,6 +359,31 @@ def _logged_before(line: str, cutoff: datetime) -> bool:
     return logged.tzinfo is not None and logged < cutoff
 
 
+def write_review_script(program: Path, database: Path, ledger: Path) -> Path:
+    """Write the script that Terminal runs to start `review`, beside the database.
+
+    It holds absolute, shell-quoted paths only, and is replaced atomically.
+    """
+    program, database, ledger = (
+        Path(os.path.abspath(path.expanduser())) for path in (program, database, ledger)
+    )
+    command = shlex.join(
+        [str(program), "review", "--database", str(database), "--ledger", str(ledger)]
+    )
+    path = database.parent / REVIEW_SCRIPT
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(dir=path.parent, prefix=f".{REVIEW_SCRIPT}.")
+    try:
+        os.fchmod(descriptor, 0o700)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as target:
+            target.write(f"#!/bin/sh\nexec {command}\n")
+        os.replace(name, path)
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
+    return path
+
+
 def _write_private(path: Path, text: str) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -411,13 +439,13 @@ def scheduled_sync(
     sync: Callable[[bool, Callable[[], None]], SyncReport],
     *,
     system: System,
-    write_review_page: Callable[[], Path],
+    write_review_script: Callable[[], Path],
 ) -> int:
     """Run one scheduled sync behind the run lock and gates, record it, then report it.
 
     `sync(full, before_runtime)` runs the Gmail API sync and calls `before_runtime` after
-    the sign-in check and before the runtime check. The review page, notification, and
-    dialog come after the lock is released.
+    the sign-in check and before the runtime check. The notification and dialog come
+    after the lock is released; a review dialog first writes the review script it opens.
     """
     live = Path(database).parent
     runs, log = live / "runs", live / "scheduled.log"
@@ -431,19 +459,20 @@ def scheduled_sync(
         _append_log(log, started, {"trigger": trigger, "outcome": "locked", "holder_pid": holder})
         return 0
     if result.record is not None:
-        _report(result.record, system, write_review_page)
+        _report(result.record, system, write_review_script)
     if result.unexpected is not None:
         raise result.unexpected
     return result.status
 
 
-def _report(record: dict[str, Any], system: System, write_review_page: Callable[[], Path]) -> None:
+def _report(
+    record: dict[str, Any], system: System, write_review_script: Callable[[], Path]
+) -> None:
     counts = record["counts"]
-    page = None if counts is None else write_review_page()
     if record["notification"]:
         system.notify(*notification_text(counts))
     if record["dialog"] == "review":
-        system.show_dialog(review_dialog_text(counts), page)
+        system.show_dialog(review_dialog_text(counts), write_review_script())
     elif record["dialog"] == "failure":
         system.show_dialog(FAILURE_DIALOGS[record["failed_stage"]], None)
 

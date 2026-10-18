@@ -374,14 +374,14 @@ The [spending summaries](MVP.md#spending-summaries): `status`, also run by `mizu
 - [x] `mizu-kakeibo` on its own shows today's, this week's, and this month's totals, the review count, and the last scheduled sync.
 - [x] `spend` lists or totals by merchant the expenses in each named period and in a given day, month, or year, with one total per currency and no conversion.
 - [x] Commands default to the live database and ledger, and the reading commands create nothing when the database is missing. Tests never use the real files.
-- [x] `review-open` refreshes and opens the review page.
+- [x] `review-open` refreshes and opens the review page. [V1.1-2](#issue-v11-2-review-messages-in-the-terminal) later removed it with the page.
 - [ ] The user runs `mizu-kakeibo` from the installed copy and sees their spending.
 
 ## Issue V1.1-2 Review messages in the terminal
 
 **Type:** AFK
 
-**Status:** `planned` (requested on 2026-10-18, when the user found the review page clunky beside the terminal commands. The user chose to remove the review page entirely, to show the first lines of a message with a key for the whole text, and to follow this with a numbered picker for correcting expenses, deferred in the MVP.)
+**Status:** `in-progress` (requested on 2026-10-18, when the user found the review page clunky beside the terminal commands. The user chose to remove the review page entirely, to show the first lines of a message with a key for the whole text, and to follow this with a numbered picker for correcting expenses, deferred in the MVP. Built on 2026-10-18 and tested with scripted input and a temporary database, and run once in a pseudo-terminal, where interrupts and end of input saved nothing. The dialog's `Review in Terminal` button, the leftover live page, and a real review item wait for the installed copy.)
 
 **Blocked by:** V1.1-1
 
@@ -391,11 +391,11 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 
 ### Acceptance criteria
 
-- [ ] `review` lists the unresolved items with numbers and shows a picked item's details and first 15 lines, with `m` for the whole text and `g` for Gmail.
-- [ ] Resolving as an expense asks for each value with its default, takes the amount in the major unit for the currency's precision, re-asks after an invalid value, and saves nothing before confirmation.
-- [ ] After each item the next is shown, and the list is read afresh after the last, skipping items resolved elsewhere.
-- [ ] Quitting, end of input, or an interrupt saves nothing for the item on screen, and a non-terminal input prints the list without asking.
-- [ ] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
+- [x] `review` lists the unresolved items with numbers and shows a picked item's details and first 15 lines, with `m` for the whole text and `g` for Gmail.
+- [x] Resolving as an expense asks for each value with its default, takes the amount in the major unit for the currency's precision, re-asks after an invalid value, and saves nothing before confirmation.
+- [x] After each item the next is shown, and the list is read afresh after the last, skipping items resolved elsewhere.
+- [x] Quitting, end of input, or an interrupt saves nothing for the item on screen, and a non-terminal input prints the list without asking.
+- [x] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
 - [ ] A scheduled run with review items writes `review.command`, and clicking `Review in Terminal` in the dialog after the run has exited starts `review` in Terminal. This is checked once by hand on the laptop, because whether macOS lets the dialog's process open Terminal is not yet known. If it does not, the button is replaced by the dialog text `Run "mizu-kakeibo review" in Terminal.` and a `Dismiss` button only, and the MVP and contract are updated.
 - [ ] No code writes `review.html`, and `review-open` no longer exists. The leftover live `review.html` and its lock are deleted by hand after installing.
 - [ ] The user resolves a real review item with `review` from the installed copy.
