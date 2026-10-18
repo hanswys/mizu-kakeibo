@@ -24,9 +24,39 @@ Everything stays on the laptop, under `~/mizu-kakeibo-private/live/`:
 
 A sync is skipped, and tried again the next hour, while the lid is closed, the laptop is asleep, or it is on battery below 20%. An hour missed that way runs when you next open the laptop, or at the next hour.
 
+## Checking your spending
+
+Open Terminal and run `mizu-kakeibo` on its own:
+
+```text
+Mizu Kakeibo · Sun 18 Oct 2026
+
+  Today       MYR 0.00 · no expenses
+  This week   MYR 84.36 · 3 expenses
+  This month  MYR 131.16 · 5 expenses
+  To review   nothing
+  Last sync   Sun 18 Oct 01:38 · 1 expense, 0 to review, 0 failed
+```
+
+To see the expenses behind a total, use `mizu-kakeibo spend` with a period. Add `--by merchant` to total each merchant instead.
+
+| Command | Shows |
+| --- | --- |
+| `mizu-kakeibo spend` | Today's expenses |
+| `mizu-kakeibo spend yesterday` | Yesterday's |
+| `mizu-kakeibo spend week` | This week's, Monday to Sunday; `last-week` for the one before |
+| `mizu-kakeibo spend month` | This month's; `last-month` for the one before |
+| `mizu-kakeibo spend year` | This year's |
+| `mizu-kakeibo spend 2026-10-11` | One day; `2026-10` for a month, `2026` for a year |
+| `mizu-kakeibo spend month --by merchant` | This month's total for each merchant |
+
+An expense counts on its transaction date. Totals include only what the latest sync logged, so mail from the last hour may not be counted yet. An expense in another currency is totalled on its own line, never converted to ringgit.
+
+You can also ask Claude Code in this repository, for example "how much did I spend on Grab this month?".
+
 ## Reviewing a message
 
-Open `~/mizu-kakeibo-private/live/review.html`, or click **Open review list** in the dialog. Each item shows why the app was unsure, which values it could not find, and an **Open in Gmail** link. Read the message in Gmail, then decide.
+Run `mizu-kakeibo review-open`, or click **Open review list** in the dialog. Each item shows why the app was unsure, which values it could not find, and an **Open in Gmail** link. Read the message in Gmail, then decide.
 
 The easiest way is to ask Claude Code in this repository, for example "resolve the Shopee review item as an expense of RM35.90 on 18 October". It runs the command for you and the page updates.
 
@@ -34,27 +64,21 @@ To do it yourself in Terminal, copy the message ID from the review page:
 
 ```sh
 # Not an expense
-mizu-kakeibo review-resolve gmail MESSAGE_ID not_expense \
-  --database ~/mizu-kakeibo-private/live/kakeibo.sqlite3 \
-  --ledger ~/mizu-kakeibo-private/live/ledger.csv
+mizu-kakeibo review-resolve gmail MESSAGE_ID not_expense
 
 # An expense: amount in sen, date as YYYY-MM-DD
 mizu-kakeibo review-resolve gmail MESSAGE_ID expense \
-  --merchant "Shopee" --amount-minor 3590 --currency MYR --transaction-date 2026-10-18 \
-  --database ~/mizu-kakeibo-private/live/kakeibo.sqlite3 \
-  --ledger ~/mizu-kakeibo-private/live/ledger.csv
+  --merchant "Shopee" --amount-minor 3590 --currency MYR --transaction-date 2026-10-18
 ```
 
-Every command needs the `--database` and `--ledger` lines shown, or it looks for files in the current folder.
+Every command uses the files in `~/mizu-kakeibo-private/live/` unless you pass `--database` and `--ledger`.
 
 ## Fixing a logged expense
 
 If a ledger row has the wrong merchant, amount, currency, or date, ask Claude Code, for example "correct the Grab expense on 17 October to RM26.00", or run:
 
 ```sh
-mizu-kakeibo ledger-correct gmail MESSAGE_ID --amount-minor 2600 \
-  --database ~/mizu-kakeibo-private/live/kakeibo.sqlite3 \
-  --ledger ~/mizu-kakeibo-private/live/ledger.csv
+mizu-kakeibo ledger-correct gmail MESSAGE_ID --amount-minor 2600
 ```
 
 Give only the values to change. The message ID is the second column of `ledger.csv`. The original decision is kept, so a correction can always be traced.
@@ -90,7 +114,7 @@ tail ~/mizu-kakeibo-private/live/scheduled.log
 ## Running a sync yourself
 
 - **Right now, as the schedule would:** `launchctl kickstart gui/$(id -u)/com.mizu-kakeibo.sync`. It does nothing if today's sync has already finished, and a sync after midnight counts for the new day.
-- **Without notifications, and without finishing the day:** `mizu-kakeibo sync --database ~/mizu-kakeibo-private/live/kakeibo.sqlite3 --ledger ~/mizu-kakeibo-private/live/ledger.csv`.
+- **Without notifications, and without finishing the day:** `mizu-kakeibo sync`.
 - **From a chat, as a backup:** ask Claude Code in this repository to run `/expense-sync`. It reads Gmail through the claude.ai connector instead of the app's own sign-in.
 
 Only one sync runs at a time; another one started meanwhile exits without doing anything.

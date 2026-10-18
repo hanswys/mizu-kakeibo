@@ -47,7 +47,7 @@ The merchant is the business the user paid, named by its brand. When a delivery,
 
 Every expense is recorded in the currency the message shows and is never converted by the analyser. For this personal inbox, an amount with no currency marker at all is assumed to be Malaysian ringgit. A symbol shared by several currencies, such as a bare `$`, does not establish the currency on its own: unless the message states the currency elsewhere, the expense goes to review. The [inbox-to-expense contract](inbox-expense-contract.md) defines these rules.
 
-Converting a foreign-currency expense to ringgit needs a real exchange rate, so it is application work rather than analyser work. It is deferred until spending totals or reporting are added. Until then, the ledger keeps each expense's original amount and currency.
+Converting a foreign-currency expense to ringgit needs a real exchange rate, so it is application work rather than analyser work. It stayed deferred when [spending summaries](#spending-summaries) were added on 2026-10-18: the ledger keeps each expense's original amount and currency, and a summary totals each currency separately.
 
 When an otherwise clear completed expense has no transaction date in the message, Version 0 uses the email's normalized received date. An explicit transaction date takes precedence. The [inbox-to-expense contract](inbox-expense-contract.md) defines the fallback and its limits.
 
@@ -116,6 +116,17 @@ Version 1 replaces the agent request with a daily sync that runs by itself on th
 - Keep a private record of each sync's message IDs, counts, and errors for 90 days, never message content.
 - Keep the agent-driven sync as a manual fallback.
 
+## Spending summaries
+
+The user asked on 2026-10-18, after Version 1, for a quick way to see what they have spent, because checking meant opening the ledger and remembering commands with long file paths.
+
+- Running `mizu-kakeibo` on its own shows spending today, this week, and this month, how many messages wait for review, and the last scheduled sync, with the commands to see more.
+- A spending command lists the expenses dated in a period with their total, or totals each merchant instead. A period is today, yesterday, this or last week, this or last month, this year, or a given day, month, or year.
+- Each currency is totalled separately and never converted, so a period with a foreign-currency expense shows one total per currency.
+- The review list opens with one command.
+- Commands use the live database and ledger unless told otherwise, so everyday use needs no file paths.
+- A summary covers what the latest sync has logged; mail that arrived since is not included until the next sync.
+
 ## External payment applications
 
 No payment-application integration is required when the application sends receipts or transaction notifications into Gmail. Those messages enter the inbox-wide workflow even when the sender is unknown and no Gmail filter exists.
@@ -140,7 +151,7 @@ The MVP does not require:
 - Attachment retrieval or analysis.
 - Direct bank or payment-application connections.
 - A dedicated forwarding address or inbound email provider.
-- Categories, budgets, reporting, or visual dashboards.
+- Categories, budgets, charts, or a visual dashboard. Spending is shown only as the terminal [spending summaries](#spending-summaries).
 - Converting foreign-currency expenses to ringgit.
 - Gmail push notifications instead of scheduled polling.
 - Hosted deployment or PostgreSQL storage.

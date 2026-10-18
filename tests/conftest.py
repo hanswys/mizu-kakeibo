@@ -7,8 +7,18 @@ from pathlib import Path
 
 import pytest
 
+from mizu_kakeibo import cli
 from mizu_kakeibo.constants import INBOX_MESSAGE_CONTRACT
 from mizu_kakeibo.models import InboxMessage, MessageContent, MessageSource
+
+
+@pytest.fixture(autouse=True)
+def private_live_paths(tmp_path, monkeypatch) -> Path:
+    """Point the CLI's default database and ledger into the test, never at the real ones."""
+    live = tmp_path / "live"
+    monkeypatch.setattr(cli, "LIVE_DATABASE", live / "kakeibo.sqlite3")
+    monkeypatch.setattr(cli, "LIVE_LEDGER", live / "ledger.csv")
+    return live
 
 
 @pytest.fixture
