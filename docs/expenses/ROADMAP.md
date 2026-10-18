@@ -308,7 +308,7 @@ Show the [notification and dialog](inbox-expense-contract.md#9-scheduled-run) af
 
 **Type:** HITL
 
-**Status:** `in-progress` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24. The user chose on 2026-10-18 to let the hourly sync make the check: every scheduled sync refreshes the token, so the first scheduled sync on or after 2026-10-24 that passes the sign-in is the evidence, and [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages) runs meanwhile. Until then, do not run `gmail-sign-in --replace`, which would issue a new token and restart its age.)
+**Status:** `in-progress` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24. The user chose on 2026-10-18 to let the hourly sync make the check: every scheduled sync refreshes the token, so the first scheduled sync on or after 2026-10-24 that passes the sign-in is the evidence. Later that day the user chose that V1-5 does not hold back Version 1 and continues as monitoring after it, because a failed refresh stops the sync before it reads any message and shows the sign-in dialog. A forced refresh that day, two days after the token was issued, succeeded with only the `gmail.readonly` scope. Until the check, do not run `gmail-sign-in --replace`, which would issue a new token and restart its age.)
 
 **Blocked by:** None - can start immediately
 
@@ -320,15 +320,15 @@ Check that a refresh token issued with the In production, unverified status keep
 
 - [ ] A token issued after the move to In production refreshes successfully more than seven days after it was issued.
 - [ ] The check records only the token's age and whether it refreshed, with no message content or token values.
-- [ ] If the refresh fails, the user decides how the sign-in is renewed, and the MVP and contract are updated before V1-6 is complete.
+- [ ] If the refresh fails, the user decides how the sign-in is renewed, and the MVP and contract are updated.
 
 ## Issue V1-6 Verify scheduled processing on real inbox messages
 
 **Type:** HITL
 
-**Status:** `in-progress` (triaged on 2026-10-18. The user chose to end the check when every item below has been seen over at least three days of scheduled syncs, instead of after a fixed week, because the done-today gate leaves only one or two syncs a day and most items can be set up on purpose. It started on 2026-10-18 alongside [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days), which must pass before V1-6 is complete. Progress on 2026-10-18: the 01:38 scheduled run logged an expense and a non-expense whose decisions and values were checked against each message's sender, subject, and receipt total, pending the user's confirmation. An agent-driven `/expense-sync` that night searched and selected correctly and found nothing new, and its `process` step reported `locked` and recorded nothing while a stand-in process held the run lock; an overlap with a real scheduled sync is still to be seen.)
+**Status:** `in-progress` (triaged on 2026-10-18. The user chose to end the check when every item below has been seen, instead of after a fixed week, because the done-today gate leaves only one or two syncs a day and most items can be set up on purpose. It started on 2026-10-18 and does not wait for [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days), which became monitoring after Version 1 that day. Progress on 2026-10-18: the 01:38 scheduled run logged an expense and a non-expense whose decisions and values were checked against each message's sender, subject, and receipt total, pending the user's confirmation. An agent-driven `/expense-sync` that night searched and selected correctly and found nothing new, and its `process` step reported `locked` and recorded nothing while a stand-in process held the run lock; an overlap with a real scheduled sync is still to be seen.)
 
-**Blocked by:** V1-3, V1-4; completion also needs V1-5
+**Blocked by:** V1-3, V1-4
 
 ### What to build
 
@@ -336,7 +336,7 @@ Let the installed schedule run by itself on real inbox messages, then have the u
 
 ### Acceptance criteria
 
-- [ ] Scheduled syncs run on real inbox messages on at least three days with no agent request, and until every item below has been seen.
+- [ ] Scheduled syncs run on real inbox messages with no agent request until every item below has been seen.
 - [ ] A human verifies an expense, a non-expense, a review item, and the extracted transaction values.
 - [ ] The user resolves a review item from the review page beside its Gmail message.
 - [ ] A day with the laptop closed or asleep for at least one window hour is caught up at the next full wake.
@@ -345,7 +345,7 @@ Let the installed schedule run by itself on real inbox messages, then have the u
 
 ## Version 1 completion gate
 
-Version 1 is complete when V1-1 to V1-6 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request.
+Version 1 is complete when V1-1 to V1-4 and V1-6 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request. [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) continues afterwards as monitoring of the sign-in's lifetime.
 
 ## Scope changes
 
