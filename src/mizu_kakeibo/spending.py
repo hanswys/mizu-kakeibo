@@ -130,7 +130,7 @@ def expense_row(
     )
 
 
-def _table(rows: list[tuple[str, ...]]) -> list[str]:
+def table(rows: list[tuple[str, ...]]) -> list[str]:
     """Left-align every column except the last, which holds right-aligned amounts."""
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
     lines = []
@@ -140,7 +140,10 @@ def _table(rows: list[tuple[str, ...]]) -> list[str]:
     return lines
 
 
-def render_spending(period: Period, entries: Sequence[LedgerEntry], by_merchant: bool) -> str:
+def render_spending(
+    period: Period, entries: Sequence[LedgerEntry], by_merchant: bool, numbered: bool = False
+) -> str:
+    """List or total the period's expenses; `numbered` numbers each expense so one can be picked."""
     lines = [period.label, ""]
     if not entries:
         lines.append("  No expenses logged.")
@@ -162,7 +165,10 @@ def render_spending(period: Period, entries: Sequence[LedgerEntry], by_merchant:
             expense_row(entry.transaction_date, entry.merchant, entry.amount_minor, entry.currency)
             for entry in entries
         ]
-    lines.extend(_table(rows))
+        if numbered:
+            width = len(str(len(rows)))
+            rows = [(f"{number:>{width}}", *row) for number, row in enumerate(rows, start=1)]
+    lines.extend(table(rows))
     lines.extend(["", f"  Total  {summary_line(entries)}"])
     if len(totals(entries)) > 1:
         lines.append(f"  Each currency is totalled separately, not converted to {HOME_CURRENCY}.")
