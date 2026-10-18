@@ -5,6 +5,8 @@ JOBS_PROMPT_VERSION = "jobs-v0.2"
 
 GROUNDING_FAILURE_REASON = "Extracted value not found in message"
 MISSING_VALUE_REASON = "Analyser reported a missing value"
+TOO_LONG_REASON = "Message is too long for the analyser context"
+REPEATED_FAILURE_REASON = "Analysis failed repeatedly"
 PLACEHOLDER_VALUES = frozenset({"null", "none", "n/a", "unknown"})
 
 JOBS_SYSTEM_PROMPT = """You are the Mizu Kakeibo job-application analyser.
@@ -28,3 +30,22 @@ Return needs_review when the email reports a job application status but the comp
 The company is the employer the user applied to. A job board such as LinkedIn or Jobstreet, or a hiring system such as Workable or Ashby, is never the company. Copy the company name and job title exactly as the email writes them, keeping legal-entity suffixes, capitalization, and punctuation. Leave out text that is not part of the name or title: requisition and job IDs such as R-123456 or (ID: 123), posting tags such as (Evergreen) or (Closed), and a location, country, or work arrangement, such as (Remote), (Hybrid), (SG Based), or - Kuala Lumpur, whether in brackets or joined to the title. Keep level text that belongs to the title, such as (Junior to Mid Level), but still leave out a location after it. The job title you return must still appear word for word in the email. Many emails also list other jobs, such as recommendations or similar jobs; ignore them and extract only the application whose status the email reports.
 
 For status_update, return the application with company, job_title, and status, and an empty missing_fields list. For not_application, return application as null and an empty missing_fields list. For needs_review, return application as null and list only the values the message lacks: company, job_title, or status, or message_content when the email cannot be interpreted. List missing fields only for needs_review. Keep reason short and generic; do not quote private message content, names, companies, or job titles. Return only JSON matching the supplied schema."""
+
+# The skim list (contract §9): not_application messages that look job-related.
+SKIM_SENDER_ADDRESSES = frozenset({"jobs-noreply@linkedin.com", "noreply@e.jobstreet.com"})
+SKIM_SENDER_DOMAINS = (
+    "workable.com",
+    "ashbyhq.com",
+    "greenhouse.io",
+    "lever.co",
+    "myworkday.com",
+    "smartrecruiters.com",
+    "successfactors.com",
+    "successfactors.eu",
+    "jobs2web.com",
+    "icims.com",
+    "indeed.com",
+)
+SKIM_SUBJECT_WORDS = frozenset(
+    {"application", "applications", "applied", "applying", "interview", "interviews"}
+)

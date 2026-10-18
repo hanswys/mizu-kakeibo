@@ -128,6 +128,8 @@ The first run processes inbox messages received on or after 2026-04-14, six mont
 
 ### Review
 
+Review runs in the terminal, like the [expense review](../expenses/MVP.md#review), as the user chose on 2026-10-18. A numbered list shows each waiting email by date, sender, subject, and why it waits. Opening an item shows the proposal with the first lines of the email, and keys show the whole text or open the original message in Gmail.
+
 - Show the source email beside the proposed decision, extracted values, and any suggested application.
 - Allow the user to accept the proposal, correct company, job title, or status, attach the email to the suggested application, another application, or a new one, or mark the email as not an application.
 - Save a confirmed name variant as an alias of the application.
@@ -136,7 +138,12 @@ The first run processes inbox messages received on or after 2026-04-14, six mont
 
 ### Application list
 
-- Show every application with its company, job title, current status, and the date of its latest update.
+- Show every application in the terminal with its company, job title, current status, and the date of its latest update.
+
+### Run result
+
+- Report which emails became status updates, were not applications, went to review, were skipped, failed, or were deferred, and how many applications were created, advanced, reopened, or left unchanged.
+- List the `not_application` emails that look job-related, such as those from LinkedIn or Jobstreet status senders or hiring systems, or with an application or interview in the subject, by sender and subject. A missed status update is otherwise silent, because `not_application` emails are not reviewed, so the user can skim this list for one, as the user chose on 2026-10-18. The list changes nothing and is not stored.
 
 ### Testing
 

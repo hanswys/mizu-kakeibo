@@ -193,7 +193,7 @@ Move the proven analyser and matching into a small local tool alongside the expe
 
 **Type:** AFK
 
-**Status:** `needs-triage`
+**Status:** `complete` (2026-10-18. Triage chose a terminal review like the expense app's, the commands `jobs-process`, `jobs-review`, and `jobs-list`, and a skim list of job-related `not_application` emails in each run result; see the MVP's [review](MVP.md#review) and [run result](MVP.md#run-result). Searching and selecting against the job tracker's own store is left to J0.5-2.)
 
 **Blocked by:** J0-5 with a `proceed` decision
 
@@ -203,16 +203,16 @@ Create one command that accepts a batch of full Gmail messages from the agent an
 
 ### Acceptance criteria
 
-- [ ] One command accepts full message envelopes and processes them end to end.
-- [ ] Known Gmail message IDs are skipped before any model call.
-- [ ] Stored decisions are limited to `status_update`, `not_application`, and `needs_review`.
-- [ ] At most one application exists per normalized company and job title.
-- [ ] Every application links to all of its source Gmail message IDs.
-- [ ] The user can accept, correct, or reject a review item without changing the source email.
-- [ ] The application list shows company, job title, current status, and latest update date.
-- [ ] The job-tracker database is separate from the expense database, and expense behavior is unchanged.
-- [ ] Tests use sanitized fixtures and mocked model responses, and cover all three decisions, missing company or title, multiple updates to one application, two roles at one company, out-of-order emails, re-application after rejection, contradictory outcomes, likely matches and aliases, invalid model output, replay, and review correction.
-- [ ] Credentials, real email content, and databases are excluded from version control.
+- [x] One command accepts full message envelopes and processes them end to end.
+- [x] Known Gmail message IDs are skipped before any model call.
+- [x] Stored decisions are limited to `status_update`, `not_application`, and `needs_review`.
+- [x] At most one application exists per normalized company and job title.
+- [x] Every application links to all of its source Gmail message IDs.
+- [x] The user can accept, correct, or reject a review item without changing the source email.
+- [x] The application list shows company, job title, current status, and latest update date.
+- [x] The job-tracker database is separate from the expense database, and expense behavior is unchanged.
+- [x] Tests use sanitized fixtures and mocked model responses, and cover all three decisions, missing company or title, multiple updates to one application, two roles at one company, out-of-order emails, re-application after rejection, contradictory outcomes, likely matches and aliases, invalid model output, replay, and review correction.
+- [x] Credentials, real email content, and databases are excluded from version control.
 
 ## Issue J0.5-2 Connect and approve the agent-driven sync
 
