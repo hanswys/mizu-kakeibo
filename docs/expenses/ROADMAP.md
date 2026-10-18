@@ -24,7 +24,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V1-3 | Schedule the daily sync on the laptop | HITL | V1-1, V1-2 |
 | V1-4 | Report each scheduled sync and open the review list | AFK | V1-3 |
 | V1-5 | Confirm the Gmail sign-in lasts past seven days | HITL | None |
-| V1-6 | Verify scheduled processing on real inbox messages | HITL | V1-3, V1-4, V1-5 |
+| V1-6 | Verify scheduled processing on real inbox messages | HITL | V1-3, V1-4 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -267,7 +267,7 @@ Add the [run lock](inbox-expense-contract.md#run-lock) to every processing comma
 
 **Type:** HITL
 
-**Status:** `complete` (triaged and built on 2026-10-17 as `scheduled-sync` and `launch-agent`, and tested with mocked Gmail, runtime, and macOS state. The user installed the LaunchAgent that day, and its first scheduled run, at 14:00 in a full wake on mains power, searched the live inbox through the Gmail API with the runtime already up. It skipped 15 messages already processed by a manual `sync` earlier that hour and filtered 19, so no message was analysed. It exited successfully, marked the day done, and wrote a run record and log line with message IDs and counts only. The user accepted this as complete, because analysis is the same code as the manual `sync`, and [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages) checks a week of scheduled analysis. The user chose to run the schedule from a `uv tool install` copy of `main`, updated on purpose, rather than from a checkout, and confirmed that only a scheduled run marks the day done, so a manual `sync` does not stop the next scheduled hour. The design is otherwise the contract's.)
+**Status:** `complete` (triaged and built on 2026-10-17 as `scheduled-sync` and `launch-agent`, and tested with mocked Gmail, runtime, and macOS state. The user installed the LaunchAgent that day, and its first scheduled run, at 14:00 in a full wake on mains power, searched the live inbox through the Gmail API with the runtime already up. It skipped 15 messages already processed by a manual `sync` earlier that hour and filtered 19, so no message was analysed. It exited successfully, marked the day done, and wrote a run record and log line with message IDs and counts only. The user accepted this as complete, because analysis is the same code as the manual `sync`, and [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages) checks scheduled analysis on real messages. The user chose to run the schedule from a `uv tool install` copy of `main`, updated on purpose, rather than from a checkout, and confirmed that only a scheduled run marks the day done, so a manual `sync` does not stop the next scheduled hour. The design is otherwise the contract's.)
 
 **Blocked by:** V1-1, V1-2
 
@@ -288,7 +288,7 @@ Install a LaunchAgent that runs the V1-1 sync every hour within the [scheduled r
 
 **Type:** AFK
 
-**Status:** `complete` (triaged and built on 2026-10-17, and tested with mocked macOS commands. A [follow-up spike](scheduler-spike-2026-10-16.md#dialogs-after-the-run-exits-2026-10-17) found that a dialog left as an ordinary child of the run is killed when the run exits, and one the run waits for would hold the next hour, so the dialog runs in a new session and the LaunchAgent is unchanged. The user chose that a run failing before processing shows only its dialog, at most once a day, with no notification; that every sync, `process`, and review resolution rewrites the review page, while only a scheduled run notifies; and the notification and dialog wording now in the [contract](inbox-expense-contract.md#9-scheduled-run). After the user installed it, a launchd run started by hand at 01:38 on 2026-10-18 analysed an expense and a non-expense, recorded a notification and no dialog, and wrote the review page. Because it had no review item, the review dialog was then shown from the installed copy without a sync, and the user opened the page from it. The user accepted V1-4 as complete; [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages) checks a week of real notifications and dialogs.)
+**Status:** `complete` (triaged and built on 2026-10-17, and tested with mocked macOS commands. A [follow-up spike](scheduler-spike-2026-10-16.md#dialogs-after-the-run-exits-2026-10-17) found that a dialog left as an ordinary child of the run is killed when the run exits, and one the run waits for would hold the next hour, so the dialog runs in a new session and the LaunchAgent is unchanged. The user chose that a run failing before processing shows only its dialog, at most once a day, with no notification; that every sync, `process`, and review resolution rewrites the review page, while only a scheduled run notifies; and the notification and dialog wording now in the [contract](inbox-expense-contract.md#9-scheduled-run). After the user installed it, a launchd run started by hand at 01:38 on 2026-10-18 analysed an expense and a non-expense, recorded a notification and no dialog, and wrote the review page. Because it had no review item, the review dialog was then shown from the installed copy without a sync, and the user opened the page from it. The user accepted V1-4 as complete; [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages) checks real notifications and dialogs.)
 
 **Blocked by:** V1-3
 
@@ -308,7 +308,7 @@ Show the [notification and dialog](inbox-expense-contract.md#9-scheduled-run) af
 
 **Type:** HITL
 
-**Status:** `in-progress` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24. Until then, do not run `gmail-sign-in --replace`, which would issue a new token and restart its age.)
+**Status:** `in-progress` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24. The user chose on 2026-10-18 to let the hourly sync make the check: every scheduled sync refreshes the token, so the first scheduled sync on or after 2026-10-24 that passes the sign-in is the evidence. Later that day the user chose that V1-5 does not hold back Version 1 and continues as monitoring after it, because a failed refresh stops the sync before it reads any message and shows the sign-in dialog. A forced refresh that day, two days after the token was issued, succeeded with only the `gmail.readonly` scope. Until the check, do not run `gmail-sign-in --replace`, which would issue a new token and restart its age.)
 
 **Blocked by:** None - can start immediately
 
@@ -320,15 +320,15 @@ Check that a refresh token issued with the In production, unverified status keep
 
 - [ ] A token issued after the move to In production refreshes successfully more than seven days after it was issued.
 - [ ] The check records only the token's age and whether it refreshed, with no message content or token values.
-- [ ] If the refresh fails, the user decides how the sign-in is renewed, and the MVP and contract are updated before V1-6 starts.
+- [ ] If the refresh fails, the user decides how the sign-in is renewed, and the MVP and contract are updated.
 
 ## Issue V1-6 Verify scheduled processing on real inbox messages
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `in-progress` (triaged on 2026-10-18. The user chose to end the check when every item below has been seen, instead of after a fixed week, because the done-today gate leaves only one or two syncs a day and most items can be set up on purpose. It started on 2026-10-18 and does not wait for [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days), which became monitoring after Version 1 that day. Progress on 2026-10-18: the 01:38 scheduled run logged an expense and a non-expense whose decisions and values were checked against each message's sender, subject, and receipt total, pending the user's confirmation. An agent-driven `/expense-sync` that night searched and selected correctly and found nothing new, and its `process` step reported `locked` and recorded nothing while a stand-in process held the run lock; an overlap with a real scheduled sync is still to be seen.)
 
-**Blocked by:** V1-3, V1-4, V1-5
+**Blocked by:** V1-3, V1-4
 
 ### What to build
 
@@ -336,16 +336,16 @@ Let the installed schedule run by itself on real inbox messages, then have the u
 
 ### Acceptance criteria
 
-- [ ] Scheduled syncs run on real inbox messages for a week with no agent request.
+- [ ] Scheduled syncs run on real inbox messages with no agent request until every item below has been seen.
 - [ ] A human verifies an expense, a non-expense, a review item, and the extracted transaction values.
 - [ ] The user resolves a review item from the review page beside its Gmail message.
 - [ ] A day with the laptop closed or asleep for at least one window hour is caught up at the next full wake.
-- [ ] The agent-driven `/expense-sync` still works as a fallback during the week, and it exits without doing anything while a scheduled sync holds the lock.
+- [ ] The agent-driven `/expense-sync` still works as a fallback during the check, and it exits without doing anything while a scheduled sync holds the lock.
 - [ ] The user records whether Version 1 is complete, with reasons, or what must be revised.
 
 ## Version 1 completion gate
 
-Version 1 is complete when V1-1 to V1-6 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request.
+Version 1 is complete when V1-1 to V1-4 and V1-6 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request. [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) continues afterwards as monitoring of the sign-in's lifetime.
 
 ## Scope changes
 
