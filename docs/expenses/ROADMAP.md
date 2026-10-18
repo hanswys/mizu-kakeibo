@@ -381,7 +381,7 @@ The [spending summaries](MVP.md#spending-summaries): `status`, also run by `mizu
 
 **Type:** AFK
 
-**Status:** `in-progress` (requested on 2026-10-18, when the user found the review page clunky beside the terminal commands. The user chose to remove the review page entirely, to show the first lines of a message with a key for the whole text, and to follow this with a numbered picker for correcting expenses, deferred in the MVP. Built on 2026-10-18 and tested with scripted input and a temporary database, and run once in a pseudo-terminal, where interrupts and end of input saved nothing. The dialog's `Review in Terminal` button, the leftover live page, and a real review item wait for the installed copy.)
+**Status:** `in-progress` (requested on 2026-10-18, when the user found the review page clunky beside the terminal commands. The user chose to remove the review page entirely, to show the first lines of a message with a key for the whole text, and to follow this with a numbered picker for correcting expenses, deferred in the MVP. Built on 2026-10-18 and tested with scripted input and a temporary database, and run once in a pseudo-terminal, where interrupts and end of input saved nothing. Installed the same day, when the leftover live page was deleted and the user confirmed the dialog's `Review in Terminal` button. It is complete once the user resolves a real review item; the live database had none on 2026-10-18.)
 
 **Blocked by:** V1.1-1
 
@@ -396,8 +396,8 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 - [x] After each item the next is shown, and the list is read afresh after the last, skipping items resolved elsewhere.
 - [x] Quitting, end of input, or an interrupt saves nothing for the item on screen, and a non-terminal input prints the list without asking.
 - [x] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
-- [ ] A scheduled run with review items writes `review.command`, and clicking `Review in Terminal` in the dialog after the run has exited starts `review` in Terminal. This is checked once by hand on the laptop, because whether macOS lets the dialog's process open Terminal is not yet known. If it does not, the button is replaced by the dialog text `Run "mizu-kakeibo review" in Terminal.` and a `Dismiss` button only, and the MVP and contract are updated.
-- [ ] No code writes `review.html`, and `review-open` no longer exists. The leftover live `review.html` and its lock are deleted by hand after installing.
+- [x] A scheduled run with review items writes `review.command`, and clicking `Review in Terminal` in the dialog after the run has exited starts `review` in Terminal. Checked by hand on the laptop on 2026-10-18: a one-off LaunchAgent with the scheduled run's `Background` process type wrote the script and showed the dialog for a test database, then exited, and the user clicked the button and saw `review` start in Terminal. The fallback was not needed.
+- [x] No code writes `review.html`, and `review-open` no longer exists. The leftover live `review.html` and its lock are deleted by hand after installing.
 - [ ] The user resolves a real review item with `review` from the installed copy.
 
 ## Version 1.1 completion gate
