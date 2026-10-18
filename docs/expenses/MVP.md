@@ -158,4 +158,6 @@ The MVP is complete when one agent request:
 5. Logs a traceable ledger row only for accepted expenses.
 6. Presents uncertain decisions and missing transaction values for review.
 
+Version 1 extends this so the same workflow runs by itself as the [scheduled sync](#scheduled-sync). The user accepted the MVP, including Version 1, as complete on 2026-10-18, and chose to find any remaining problems in everyday use; the [user guide](USER-GUIDE.md) describes that use.
+
 The first validation run established the full-message baseline, which showed a meaningful latency problem; the skip filter is the response. Further metadata routing and Gmail labels may be evaluated later on the same terms.

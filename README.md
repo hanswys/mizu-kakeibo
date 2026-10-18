@@ -8,6 +8,7 @@ implemented technical behavior lives in
 ## Projects
 
 - Expenses (Mizu Kakeibo): [`docs/expenses/MVP.md`](docs/expenses/MVP.md)
+  - Day-to-day use: [`docs/expenses/USER-GUIDE.md`](docs/expenses/USER-GUIDE.md)
 - Job-application tracker (planning): [`docs/jobs/MVP.md`](docs/jobs/MVP.md)
 
 The setup and commands below apply to the expense project.
