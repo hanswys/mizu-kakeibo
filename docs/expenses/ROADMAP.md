@@ -361,7 +361,7 @@ Make the running app easy to use day to day: see what was spent and resolve revi
 
 **Type:** AFK
 
-**Status:** `in-progress` (requested and built on 2026-10-18, after Version 1, when the user found everyday use meant remembering commands. Tested with fixed dates and a temporary database, and read against the live ledger from the branch. It is complete once merged and installed with `uv tool install --reinstall`, and the user has run `mizu-kakeibo` from the installed copy.)
+**Status:** `complete` (requested and built on 2026-10-18, after Version 1, when the user found everyday use meant remembering commands. Tested with fixed dates and a temporary database, and read against the live ledger from the branch. Installed with `uv tool install --reinstall` the same day, when the user ran `mizu-kakeibo` from the installed copy and saw their spending.)
 
 **Blocked by:** Version 1
 
@@ -375,7 +375,7 @@ The [spending summaries](MVP.md#spending-summaries): `status`, also run by `mizu
 - [x] `spend` lists or totals by merchant the expenses in each named period and in a given day, month, or year, with one total per currency and no conversion.
 - [x] Commands default to the live database and ledger, and the reading commands create nothing when the database is missing. Tests never use the real files.
 - [x] `review-open` refreshes and opens the review page. [V1.1-2](#issue-v11-2-review-messages-in-the-terminal) later removed it with the page.
-- [ ] The user runs `mizu-kakeibo` from the installed copy and sees their spending.
+- [x] The user runs `mizu-kakeibo` from the installed copy and sees their spending.
 
 ## Issue V1.1-2 Review messages in the terminal
 
@@ -403,6 +403,8 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 ## Version 1.1 completion gate
 
 Version 1.1 is complete when V1.1-1 and V1.1-2 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
+
+Version 1.1 was completed on 2026-10-18, when both issues met their acceptance criteria.
 
 ## Scope changes
 
