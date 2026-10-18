@@ -98,6 +98,13 @@ On 2026-10-16 the user set speed and laptop load ahead of small accuracy gains: 
 - Allow the user to accept an expense, mark it as not an expense, or correct extracted values.
 - Preserve the Gmail message ID and the original decision after correction.
 
+The user chose on 2026-10-18 to review in the terminal instead of on a browser page, because every other everyday task is a terminal command:
+
+- `mizu-kakeibo review` lists the waiting messages, numbered, with each one's date, sender, subject, and why it needs review. The user picks one by its number.
+- A picked message shows its sender, subject, received time, why it needs review, the values the analyser could not find, and the first lines of its text. The whole text and the Gmail message are each one key away.
+- The user marks the message as an expense, marks it as not an expense, or skips it for now. For an expense, the merchant, currency, amount, and date are asked one at a time, with the sender's name, ringgit, and the received date offered as defaults. Amounts are typed as a receipt shows them, such as `12.50`.
+- Nothing is saved until the user confirms, because a resolved message cannot be returned to review. After each message, the next waiting one is shown.
+
 ### Scheduled sync
 
 Version 1 replaces the agent request with a daily sync that runs by itself on the user's laptop. The user chose this design on 2026-10-16 after a [scheduler spike](scheduler-spike-2026-10-16.md).
@@ -110,9 +117,9 @@ Version 1 replaces the agent request with a daily sync that runs by itself on th
 - Select, filter, and analyse messages exactly as the agent-driven sync does: the same skip filter, the same review for oversized messages, and at most 25 new messages per sync, with the rest continuing in the next hour. The user chose on 2026-10-16 to keep the 25-message batch even though reading Gmail directly removes its original reason, the agent's context, because it keeps a sync to a few minutes and the laptop usable.
 - Never run two syncs at once. A sync that finds another one running, scheduled or started from chat, exits without doing anything.
 - Send a message to review after its analysis fails in three syncs, instead of retrying it forever.
-- After a sync that processed or failed any message, show a notification with the counts of expenses, review items, and failures. When there are review items or failures, also show a dialog with an "Open review list" button, which opens a private page listing each review item with its Gmail link. A sync with nothing new stays silent.
+- After a sync that processed or failed any message, show a notification with the counts of expenses, review items, and failures. When there are review items or failures, also show a dialog with a "Review in Terminal" button, which opens Terminal and starts `mizu-kakeibo review`. A sync with nothing new stays silent.
 - When a sync stops before reading any message, because the Gmail sign-in, the analyser, or the Gmail search failed, show a dialog that says what failed, and for the sign-in how to sign in again, at most once a day and with no notification. The user chose this on 2026-10-17, so a problem lasting several hours does not notify every hour.
-- Keep the review page current after every sync, scheduled or manual, and after each review resolution. Only a scheduled sync shows the notification and dialog.
+- Only a scheduled sync shows the notification and dialog.
 - Keep a private record of each sync's message IDs, counts, and errors for 90 days, never message content.
 - Keep the agent-driven sync as a manual fallback.
 
@@ -123,7 +130,7 @@ The user asked on 2026-10-18, after Version 1, for a quick way to see what they 
 - Running `mizu-kakeibo` on its own shows spending today, this week, and this month, how many messages wait for review, and the last scheduled sync, with the commands to see more.
 - A spending command lists the expenses dated in a period with their total, or totals each merchant instead. A period is today, yesterday, this or last week, this or last month, this year, or a given day, month, or year.
 - Each currency is totalled separately and never converted, so a period with a foreign-currency expense shows one total per currency.
-- The review list opens with one command.
+- Reviewing starts with one command, `mizu-kakeibo review`, described under [Review](#review).
 - Commands use the live database and ledger unless told otherwise, so everyday use needs no file paths.
 - A summary covers what the latest sync has logged; mail that arrived since is not included until the next sync.
 
@@ -140,6 +147,8 @@ These improvements wait until the MVP is complete:
 - **Oversized messages.** Analyse a message that is too long for the analyser instead of sending it to review.
 - **Sync performance.** Make each sync faster and lighter. The first real sync, on 2026-10-15, took about a minute per message, and most of the messages it analysed were job alerts and promotions. The skip filter and a smaller analyser model were pulled forward from this work on 2026-10-16.
 - **Analyser accuracy.** Reduce unnecessary reviews and merchant-name errors once the end-to-end daily workflow is in use.
+- **Correcting from the spending list.** Number the expenses that a spending command lists, so one can be picked and corrected step by step, as a review item is, instead of by its message ID. The user asked on 2026-10-18 for this to follow terminal review.
+- **Analyser values in review.** Keep the values the analyser found for a message it sends to review, and offer them as the defaults when the user resolves it.
 
 ## Out of scope
 

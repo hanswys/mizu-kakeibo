@@ -26,6 +26,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V1-5 | Confirm the Gmail sign-in lasts past seven days | HITL | None |
 | V1-6 | Verify scheduled processing on real inbox messages | HITL | V1-3, V1-4 |
 | V1.1-1 | Show spending from the terminal without file paths | AFK | Version 1 |
+| V1.1-2 | Review messages in the terminal | AFK | V1.1-1 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -354,7 +355,7 @@ The user accepted Version 1 as complete on 2026-10-18, as recorded in [V1-6](#is
 
 ## Version 1.1 outcome
 
-Make the running app easy to use day to day: see what was spent without opening the ledger or remembering commands and file paths.
+Make the running app easy to use day to day: see what was spent and resolve review items without opening the ledger or a browser page, or remembering commands and file paths.
 
 ## Issue V1.1-1 Show spending from the terminal without file paths
 
@@ -376,9 +377,32 @@ The [spending summaries](MVP.md#spending-summaries): `status`, also run by `mizu
 - [x] `review-open` refreshes and opens the review page.
 - [ ] The user runs `mizu-kakeibo` from the installed copy and sees their spending.
 
+## Issue V1.1-2 Review messages in the terminal
+
+**Type:** AFK
+
+**Status:** `planned` (requested on 2026-10-18, when the user found the review page clunky beside the terminal commands. The user chose to remove the review page entirely, to show the first lines of a message with a key for the whole text, and to follow this with a numbered picker for correcting expenses, deferred in the MVP.)
+
+**Blocked by:** V1.1-1
+
+### What to build
+
+The [terminal review](MVP.md#review): an interactive `review` command, as defined in the [contract](inbox-expense-contract.md#10-spending-summaries), and a dialog button that starts it in Terminal through the [review script](inbox-expense-contract.md#9-scheduled-run). Remove `review-open`, the review page, and the page writes after `process`, `sync`, `scheduled-sync`, and `review-resolve`. Keep `review-list` and `review-resolve` for scripts and the agent-driven sync. Point `status`, the README, the user guide, and the `/expense-sync` skill at `review`.
+
+### Acceptance criteria
+
+- [ ] `review` lists the unresolved items with numbers and shows a picked item's details and first 15 lines, with `m` for the whole text and `g` for Gmail.
+- [ ] Resolving as an expense asks for each value with its default, takes the amount in the major unit for the currency's precision, re-asks after an invalid value, and saves nothing before confirmation.
+- [ ] After each item the next is shown, and the list is read afresh after the last, skipping items resolved elsewhere.
+- [ ] Quitting, end of input, or an interrupt saves nothing for the item on screen, and a non-terminal input prints the list without asking.
+- [ ] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
+- [ ] A scheduled run with review items writes `review.command`, and clicking `Review in Terminal` in the dialog after the run has exited starts `review` in Terminal. This is checked once by hand on the laptop, because whether macOS lets the dialog's process open Terminal is not yet known. If it does not, the button is replaced by the dialog text `Run "mizu-kakeibo review" in Terminal.` and a `Dismiss` button only, and the MVP and contract are updated.
+- [ ] No code writes `review.html`, and `review-open` no longer exists. The leftover live `review.html` and its lock are deleted by hand after installing.
+- [ ] The user resolves a real review item with `review` from the installed copy.
+
 ## Version 1.1 completion gate
 
-Version 1.1 is complete when V1.1-1 meets its acceptance criteria. Further everyday-use work is added here only after the MVP changes.
+Version 1.1 is complete when V1.1-1 and V1.1-2 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
 
 ## Scope changes
 
