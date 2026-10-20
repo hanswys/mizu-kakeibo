@@ -27,6 +27,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V1-6 | Verify scheduled processing on real inbox messages | HITL | V1-3, V1-4 |
 | V1.1-1 | Show spending from the terminal without file paths | AFK | Version 1 |
 | V1.1-2 | Review messages in the terminal | AFK | V1.1-1 |
+| V1.1-3 | Correct an expense from the spending list | AFK | V1.1-2 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -355,7 +356,7 @@ The user accepted Version 1 as complete on 2026-10-18, as recorded in [V1-6](#is
 
 ## Version 1.1 outcome
 
-Make the running app easy to use day to day: see what was spent and resolve review items without opening the ledger or a browser page, or remembering commands and file paths.
+Make the running app easy to use day to day: see what was spent, resolve review items, and correct logged expenses without opening the ledger or a browser page, or remembering commands, file paths, and message IDs.
 
 ## Issue V1.1-1 Show spending from the terminal without file paths
 
@@ -400,11 +401,33 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 - [x] No code writes `review.html`, and `review-open` no longer exists. The leftover live `review.html` and its lock are deleted by hand after installing.
 - [x] The user resolves a real review item with `review` from the installed copy. On 2026-10-18 the user resolved a mock item in a separate test database as an expense, and a fresh read found the resolution, the transaction, and the ledger row saved, with the original analysis kept and nothing left to review.
 
+## Issue V1.1-3 Correct an expense from the spending list
+
+**Type:** AFK
+
+**Status:** `in-progress` (requested on 2026-10-18 as the follow-up to V1.1-2, when the user chose to correct from `spend` itself, with the same four values as `ledger-correct`. Built on 2026-10-18 and tested with scripted input and a temporary database, and run once in a pseudo-terminal on a fictional database. Waits for the user's correction from the installed copy.)
+
+**Blocked by:** V1.1-2
+
+### What to build
+
+[Correcting from the spending list](MVP.md#spending-summaries): in a terminal, `spend` numbers the expenses and corrects a picked one through prompts with the logged values as defaults, as defined in the [contract](inbox-expense-contract.md#10-spending-summaries), saving through the existing [ledger correction](inbox-expense-contract.md#ledger-corrections). Reuse the review prompts without changing `review`. Point the README and the user guide at it.
+
+### Acceptance criteria
+
+- [x] In a terminal, `spend` numbers the period's expenses and asks for one to correct; Enter or `q` quits, and `--by merchant` or a non-terminal input or output prints the list as before.
+- [x] A picked expense asks for the merchant, currency, amount, and date with the logged values as defaults, re-asks after an invalid value, and drops the amount default when the currency changes.
+- [x] Nothing is saved before confirmation or when no value changes, and a save records one correction and rewrites the ledger row.
+- [x] After each expense the period is read afresh and listed again.
+- [x] Quitting, end of input, or an interrupt saves nothing, and `review` behaves as before, with its tests unchanged.
+- [x] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
+- [ ] The user corrects a real expense with `spend` from the installed copy.
+
 ## Version 1.1 completion gate
 
-Version 1.1 is complete when V1.1-1 and V1.1-2 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
+Version 1.1 is complete when V1.1-1, V1.1-2, and V1.1-3 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
 
-Version 1.1 was completed on 2026-10-18, when both issues met their acceptance criteria.
+Version 1.1 was first completed on 2026-10-18, when V1.1-1 and V1.1-2 met their acceptance criteria. It was reopened the same day for V1.1-3, after the MVP added correcting from the spending list.
 
 ## Scope changes
 

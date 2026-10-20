@@ -131,6 +131,8 @@ The user asked on 2026-10-18, after Version 1, for a quick way to see what they 
 - A spending command lists the expenses dated in a period with their total, or totals each merchant instead. A period is today, yesterday, this or last week, this or last month, this year, or a given day, month, or year.
 - Each currency is totalled separately and never converted, so a period with a foreign-currency expense shows one total per currency.
 - Reviewing starts with one command, `mizu-kakeibo review`, described under [Review](#review).
+- In a terminal, the spending command numbers the expenses it lists and asks for one to correct, so a wrong merchant, amount, currency, or date is fixed without looking up the message ID. Pressing Enter quits. Totals by merchant are not numbered, because each row groups several expenses.
+- A picked expense's merchant, currency, amount, and date are asked one at a time, as in [review](#review), with its logged values as the defaults. Nothing is saved until the user confirms, and the original decision is kept, as for any [correction](#personal-ledger). The user asked on 2026-10-18 for this to follow terminal review, and chose the same day to correct from the spending command itself rather than a separate one.
 - Commands use the live database and ledger unless told otherwise, so everyday use needs no file paths.
 - A summary covers what the latest sync has logged; mail that arrived since is not included until the next sync.
 
@@ -147,7 +149,6 @@ These improvements wait until the MVP is complete:
 - **Oversized messages.** Analyse a message that is too long for the analyser instead of sending it to review.
 - **Sync performance.** Make each sync faster and lighter. The first real sync, on 2026-10-15, took about a minute per message, and most of the messages it analysed were job alerts and promotions. The skip filter and a smaller analyser model were pulled forward from this work on 2026-10-16.
 - **Analyser accuracy.** Reduce unnecessary reviews and merchant-name errors once the end-to-end daily workflow is in use.
-- **Correcting from the spending list.** Number the expenses that a spending command lists, so one can be picked and corrected step by step, as a review item is, instead of by its message ID. The user asked on 2026-10-18 for this to follow terminal review.
 - **Analyser values in review.** Keep the values the analyser found for a message it sends to review, and offer them as the defaults when the user resolves it.
 
 ## Out of scope

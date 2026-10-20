@@ -48,7 +48,7 @@ or change the live ledger.
 
 ```sh
 mizu-kakeibo                            # today, this week, this month, review count, last sync
-mizu-kakeibo spend month                # this month's expenses and total
+mizu-kakeibo spend month                # this month's expenses and total; pick one to correct
 mizu-kakeibo spend last-month --by merchant
 mizu-kakeibo spend 2026-10-11           # also YYYY-MM, YYYY, today, yesterday, week, last-week, year
 mizu-kakeibo review                     # resolve review items one at a time

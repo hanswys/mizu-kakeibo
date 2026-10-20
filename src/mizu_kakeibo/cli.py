@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .constants import SYNC_BATCH_LIMIT, SYNC_RECEIVED_SINCE
+from .correction import correct_spending
 from .evaluation import evaluate, load_dataset
 from .gmail_api import (
     GMAIL_API_DIRECTORY,
@@ -109,7 +110,10 @@ def command_status(args: argparse.Namespace) -> int:
 
 def command_spend(args: argparse.Namespace) -> int:
     period = parse_period(args.period, _today())
-    entries = _existing_store(args).list_transactions(period.start, period.end)
+    store = _existing_store(args)
+    if args.by is None and sys.stdout.isatty():
+        return correct_spending(store, period, Console())
+    entries = store.list_transactions(period.start, period.end)
     sys.stdout.write(render_spending(period, entries, args.by == "merchant"))
     return 0
 
@@ -529,7 +533,9 @@ def build_parser() -> argparse.ArgumentParser:
     _add_storage_options(status)
     status.set_defaults(handler=command_status)
 
-    spend = subparsers.add_parser("spend", help="list or total the expenses in a period")
+    spend = subparsers.add_parser(
+        "spend", help="list or total the expenses in a period, and correct one"
+    )
     spend.add_argument(
         "period",
         nargs="?",

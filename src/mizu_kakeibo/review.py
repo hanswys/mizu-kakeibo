@@ -74,8 +74,8 @@ class Console:
         subprocess.run(["open", url], check=False)
 
 
-class _Quit(Exception):
-    pass
+class Quit(Exception):
+    """Raised when the user answers `q` at any prompt."""
 
 
 @dataclass(frozen=True)
@@ -218,15 +218,16 @@ def parse_date(text: str) -> date:
         raise ValueError("Type the date as YYYY-MM-DD") from None
 
 
-class _Review:
-    def __init__(self, store: Store, console: Console) -> None:
-        self.store = store
+class Prompter:
+    """Ask for values one at a time, re-asking after an invalid one, and confirm before saving."""
+
+    def __init__(self, console: Console) -> None:
         self.console = console
 
     def ask(self, prompt: str) -> str:
         answer = self.console.ask(prompt)
         if answer.strip().lower() == "q":
-            raise _Quit
+            raise Quit
         return answer
 
     def ask_value(self, label: str, default: str | None, parse: Callable[[str], T]) -> T:
@@ -249,6 +250,12 @@ class _Review:
             if answer == "n":
                 self.console.write("Not saved.")
                 return False
+
+
+class _Review(Prompter):
+    def __init__(self, store: Store, console: Console) -> None:
+        super().__init__(console)
+        self.store = store
 
     def run(self) -> None:
         while True:
@@ -354,7 +361,7 @@ def review(store: Store, console: Console) -> int:
         return 0
     try:
         _Review(store, console).run()
-    except _Quit:
+    except Quit:
         pass
     except (EOFError, KeyboardInterrupt):
         console.write()

@@ -38,7 +38,7 @@ Mizu Kakeibo · Sun 18 Oct 2026
   Last sync   Sun 18 Oct 01:38 · 1 expense, 0 to review, 0 failed
 ```
 
-To see the expenses behind a total, use `mizu-kakeibo spend` with a period. Add `--by merchant` to total each merchant instead.
+To see the expenses behind a total, use `mizu-kakeibo spend` with a period. Add `--by merchant` to total each merchant instead. Without `--by merchant`, the list is numbered so you can [fix an expense](#fixing-a-logged-expense).
 
 | Command | Shows |
 | --- | --- |
@@ -84,13 +84,28 @@ You can also ask Claude Code in this repository, for example "resolve the Shopee
 
 ## Fixing a logged expense
 
-If a ledger row has the wrong merchant, amount, currency, or date, ask Claude Code, for example "correct the Grab expense on 17 October to RM26.00", or run:
+If an expense has the wrong merchant, amount, currency, or date, list its period with `mizu-kakeibo spend`. In Terminal the expenses are numbered:
+
+```text
+October 2026
+
+  1  Sat 17 Oct  Grab       MYR 24.90
+  2  Sun 18 Oct  Shopee     MYR 35.90
+
+  Total  MYR 60.80 · 2 expenses
+
+Number to correct, or Enter to quit:
+```
+
+Type a number, and you are asked for the merchant, currency, amount, and date in turn; press Enter to keep the value in brackets. Nothing is saved until you answer `y` to `Save?`, and then the list is shown again. Press Enter at the number prompt to quit.
+
+You can also ask Claude Code, for example "correct the Grab expense on 17 October to RM26.00", or run `ledger-correct` with the message ID from the second column of `ledger.csv`:
 
 ```sh
 mizu-kakeibo ledger-correct gmail MESSAGE_ID --amount-minor 2600
 ```
 
-Give only the values to change. The message ID is the second column of `ledger.csv`. The original decision is kept, so a correction can always be traced.
+Either way the original decision is kept, so a correction can always be traced.
 
 ## When something goes wrong
 
