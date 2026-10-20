@@ -121,8 +121,9 @@ def _fallback_reason(output: ExpenseAnalysisOutput) -> str:
     return "Evidence requires review under the Version 0 policy"
 
 
-def _sanitized_reason(output: ExpenseAnalysisOutput, message: InboxMessage) -> str:
-    reason = unicodedata.normalize("NFKC", output.reason)
+def sanitize_reason(reason: str, private_values: Iterable[str], evidence: str) -> str | None:
+    """Remove private values from a model's reason; None when it is empty or quotes evidence."""
+    reason = unicodedata.normalize("NFKC", reason)
     reason = "".join(
         character for character in reason if not unicodedata.category(character).startswith("C")
     )
@@ -131,18 +132,23 @@ def _sanitized_reason(output: ExpenseAnalysisOutput, message: InboxMessage) -> s
     reason = re.sub(r"(?i)\bhttps?://\S+", "[redacted]", reason)
     reason = re.sub(r"(?<!\d)\d(?:[ -]?\d){5,}(?!\d)", "[redacted]", reason)
 
-    private_values = [message.sender, message.subject]
-    if output.transaction is not None:
-        private_values.append(output.transaction.merchant)
     for private_value in private_values:
         private_value = private_value.strip()
         if len(private_value) >= 3:
             reason = re.sub(re.escape(private_value), "[redacted]", reason, flags=re.IGNORECASE)
 
-    evidence_words = re.findall(r"\w+", message.content.text.casefold())
+    evidence_words = re.findall(r"\w+", evidence.casefold())
     reason_words = " ".join(re.findall(r"\w+", reason.casefold()))
     for index in range(max(0, len(evidence_words) - 3)):
         phrase = " ".join(evidence_words[index : index + 4])
         if len(phrase) >= 16 and phrase in reason_words:
-            return _fallback_reason(output)
+            return None
+    return reason or None
+
+
+def _sanitized_reason(output: ExpenseAnalysisOutput, message: InboxMessage) -> str:
+    private_values = [message.sender, message.subject]
+    if output.transaction is not None:
+        private_values.append(output.transaction.merchant)
+    reason = sanitize_reason(output.reason, private_values, message.content.text)
     return reason or _fallback_reason(output)

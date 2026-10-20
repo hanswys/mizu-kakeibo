@@ -14,10 +14,13 @@ from mizu_kakeibo.models import InboxMessage, MessageContent, MessageSource
 
 @pytest.fixture(autouse=True)
 def private_live_paths(tmp_path, monkeypatch) -> Path:
-    """Point the CLI's default database and ledger into the test, never at the real ones."""
+    """Point the CLI's default databases and ledger into the test, never at the real ones."""
     live = tmp_path / "live"
     monkeypatch.setattr(cli, "LIVE_DATABASE", live / "kakeibo.sqlite3")
     monkeypatch.setattr(cli, "LIVE_LEDGER", live / "ledger.csv")
+    monkeypatch.setattr(
+        cli, "JOBS_LIVE_DATABASE", tmp_path / "jobs" / "live" / "job-tracker.sqlite3"
+    )
     return live
 
 

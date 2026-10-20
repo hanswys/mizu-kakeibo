@@ -1,6 +1,6 @@
 # Job Tracker Contract
 
-**Status:** Version 0 contract agreed on 2026-10-17 (J0-2); the sampled layouts are from J0-1. Implementation status is tracked in [the roadmap](ROADMAP.md).
+**Status:** Version 0 contract agreed on 2026-10-17 (J0-2); the commands, terminal review, and run result added on 2026-10-18 (J0.5-1); the sampled layouts are from J0-1. Implementation status is tracked in [the roadmap](ROADMAP.md).
 **Contract version:** `jobs-v0`
 
 This document is the source of truth for the job tracker's retrieval, analyser input and output, normalization of company names and job titles, matching, status update, review, persistence, and evaluation rules. Product scope belongs in the [MVP](MVP.md). The shared Gmail adapter and `inbox-message/v0` envelope are defined in the [expense contract](../expenses/inbox-expense-contract.md) and are referenced, not copied.
@@ -224,7 +224,25 @@ Each link records its effect at the time it was made: `created`, `advanced`, `re
 
 ## 8. Review resolution
 
-A review item has one cause: `analyser` for a `needs_review` decision, `likely_match`, or `contradictory_outcome`. The item shows the source email, through its Gmail link as in the expense review list, beside the decision, the reason, the extracted values or missing fields, and the suggested application.
+A review item has one cause: `analyser` for a `needs_review` decision, `likely_match`, or `contradictory_outcome`.
+
+`jobs-review` resolves items in the terminal, as the expense app's `review` does. It lists the unresolved items in the order they were processed, numbered, one line each: the Malaysia-time received date, the sender's name, the subject, and why the item waits, which is the missing fields, `likely match`, `contradicts the outcome`, or the reason. Picking a number shows that item: the subject, sender, received time, reason, missing fields, the extracted values, the suggested application with its status and latest update date, and the first 15 non-blank lines of the envelope text. It then reads keys until the item is resolved or skipped, and continues with the next item, reading the list afresh:
+
+| Key | Action |
+| --- | --- |
+| `a` | accept: attach to the suggested application with the extracted values; offered only when an application is suggested |
+| `e` | edit: type the company, job title, and status, defaulting to the extracted values, and match them |
+| `t` | attach to another application, picked by number from the application list, with a status and names that default to the extracted values, or else to the application's own names |
+| `c` | create a new application from a typed company, job title, and status |
+| `n` | not an application |
+| `m` | show the whole envelope text in a pager |
+| `g` | open the original message in Gmail, with the link the expense review builds |
+| `s` | skip the item, leaving it unresolved |
+| `q` | quit, saving nothing for the current item |
+
+Every action shows what it will save and asks for confirmation. A status may be typed whole or by its first letter. A refused resolution saves nothing, explains why, and asks for another key; a refused match names the likely application, so the user can attach with `t` or create with `c`. An item resolved elsewhere meanwhile is passed over. Message text is stripped of control characters and bidirectional overrides before it is shown. Without an interactive terminal, `jobs-review` prints the list and asks nothing. Extracted values are the company, job title, and status the analyser returned, including those of an output that the missing-value guard or the grounding check replaced.
+
+The resolutions:
 
 A review item is resolved once, with one of these actions. Attach, match, and create take a status, company, and job title, which default to the extracted values and may be corrected. Attach alone may leave out the names, and then saves no alias:
 
@@ -237,6 +255,8 @@ A resolution is recorded separately and never modifies the analysis, so the Gmai
 
 ## 9. Processing, failure, and idempotency
 
+`jobs-process` takes a JSON file holding one message or an array of them, each a connector `RAW` response, a Gmail full-message response, or an `inbox-message/v0` envelope. Responses are normalized preferring HTML, as [inbox retrieval](#1-inbox-retrieval) requires; a response that cannot be normalized is a failure of that message alone. `--selection` takes a selection's JSON and reports its `already_processed_ids` as skipped and its `deferred_ids` as deferred. `--reevaluate` re-evaluates messages that are already processed, as [re-evaluation](#re-evaluation) describes.
+
 The job tracker follows the expense contract's [processing rules](../expenses/inbox-expense-contract.md#6-processing-failure-and-idempotency) on its own database:
 
 - The Gmail message ID is checked before retrieval and before a model call; a replay of a processed ID changes nothing.
@@ -244,7 +264,23 @@ The job tracker follows the expense contract's [processing rules](../expenses/in
 - A run takes an exclusive lock on `<database>.lock`. The job tracker's lock is separate from the expense app's, so both apps may run at once; Ollama serves their requests in turn from the one loaded model.
 - A message whose own analysis fails three times is stored as `needs_review` with the reason `Analysis failed repeatedly` and `message_content` missing.
 
-A run reports its message IDs in six groups: `status_update` for status updates linked to an application, `not_application`, `review` for `needs_review` decisions and status updates sent to review, `skipped`, `failed`, and `deferred`. It also counts applications created, advanced, reopened, and unchanged.
+A run reports its message IDs in six groups: `status_update` for status updates linked to an application, `not_application`, `review` for `needs_review` decisions and status updates sent to review, `skipped`, `failed`, and `deferred`. It also counts applications created, advanced, reopened, and unchanged, by the effect of each link the run made. A run where any message failed exits with status 1. While another run holds the lock, `jobs-process` records nothing and reports `locked`.
+
+The model's reason is sanitized before it is stored, as in the expense app: control characters, email addresses, URLs, and long digit runs are removed, and so are the sender, the subject, and the extracted company and job title. A reason that quotes four consecutive words of the message, at least 16 characters together, is replaced by a fixed one. The fixed reasons above are stored unchanged.
+
+### Skim list
+
+The run result also lists, under `skim`, each message of the run decided `not_application` that looks job-related, with its message ID, sender, and subject, so the user can skim them for a missed status update. A message looks job-related when any of these holds:
+
+- Its sender address is a sampled [status sender](#linkedin-and-jobstreet-status-layouts): `jobs-noreply@linkedin.com` or `noreply@e.jobstreet.com`.
+- Its sender's domain is a hiring system or job board, or a subdomain of one: `workable.com`, `ashbyhq.com`, `greenhouse.io`, `lever.co`, `myworkday.com`, `smartrecruiters.com`, `successfactors.com`, `successfactors.eu`, `jobs2web.com`, `icims.com`, or `indeed.com`.
+- Its subject, after the [text folding](#5-name-normalization), contains the word `application`, `applications`, `applied`, `applying`, `interview`, or `interviews`.
+
+The list is in the run's local result only; it changes nothing and is not stored.
+
+### Application list
+
+`jobs-list` prints the applications, newest latest update first and then by ID, with their latest update date, current status, company, and job title as first written. It also counts the applications and the unresolved review items.
 
 ## 10. Persistence
 
@@ -253,13 +289,13 @@ The job tracker keeps one private SQLite database, separate from the expense dat
 The database holds these records:
 
 - **Message:** source provider, Gmail message ID, thread ID, and the complete envelope. Unique per source.
-- **Analysis:** source, revision and whether it is active, decision, sanitized reason, missing fields, company, job title, and status as the analyser returned them, whether the missing-value guard or the grounding check replaced the decision, the original output when the guard replaced it, the inbox-message, analyser-input, and analyser-output contract versions, Ollama version, model digest, prompt version, runtime options, and processing time. One active analysis per source.
+- **Analysis:** source, revision and whether it is active, decision, sanitized reason, missing fields, company, job title, and status as the analyser returned them, whether the missing-value guard or the grounding check replaced the decision, the original output when either replaced it, the inbox-message, analyser-input, and analyser-output contract versions, Ollama version, model digest, prompt version, runtime options, and processing time. One active analysis per source.
 - **Analysis failure:** source, failure count, and last failure time.
 - **Application:** ID, company and job title as first written, company key and job title key, current status, latest update date, and creation time. The key pair is unique.
 - **Alias:** application, company and job title as written, their keys, and confirmation time. The key pair is unique and differs from every application's own pair.
 - **Link:** source, application, the analysis or resolution it came from, status, received time, whether it was user-confirmed, its effect, and link time. Each source links to at most one application.
 - **Review item:** active analysis, cause, suggested application, and creation time.
-- **Resolution:** review item, action, company, job title, and status, application, and resolution time. One per review item.
+- **Resolution:** review item, action (`attach`, `match`, `create`, or `not_application`), company, job title, and status, application, and resolution time. One per review item.
 
 The current status and latest update date are stored for display and recomputed whenever a link is added or removed.
 

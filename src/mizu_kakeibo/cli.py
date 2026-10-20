@@ -25,7 +25,11 @@ from .gmail_api import (
 from .jobs.analyser import OllamaJobAnalyser
 from .jobs.evaluation import evaluate as evaluate_jobs
 from .jobs.evaluation import load_dataset as load_jobs_dataset
-from .models import AnalysisDecision, Transaction
+from .jobs.processor import JobProcessingResult, JobProcessor, parse_job_message, run_report
+from .jobs.review import application_list
+from .jobs.review import review as review_jobs
+from .jobs.storage import JOBS_LIVE_DATABASE, JobReviewError, JobStore
+from .models import AnalysisDecision, InboxMessage, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
 from .processor import InboxProcessor, ProcessingResult, ProcessingStatus
@@ -356,6 +360,64 @@ def command_jobs_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _existing_job_store(args: argparse.Namespace) -> JobStore:
+    """Open the job tracker's store for a command that only reads it."""
+    if not args.database.is_file():
+        raise FileNotFoundError(
+            f"no job-tracker database at {args.database}; pass --database or run jobs-process"
+        )
+    return JobStore(args.database)
+
+
+def command_jobs_process(args: argparse.Namespace) -> int:
+    items: list[InboxMessage | JobProcessingResult] = []
+    for value in _objects(_read_json(args.input)):
+        try:
+            items.append(parse_job_message(value))
+        except (NormalizationError, ValidationError) as error:
+            message_id = value.get("id") if isinstance(value, dict) else None
+            if not isinstance(message_id, str) or not message_id:
+                raise
+            items.append(
+                JobProcessingResult(
+                    "gmail",
+                    message_id,
+                    ProcessingStatus.FAILED,
+                    error=f"normalization failed: {error}",
+                )
+            )
+    messages = {item.source.message_id: item for item in items if isinstance(item, InboxMessage)}
+    selection = _read_json(args.selection) if args.selection is not None else {}
+    try:
+        with run_lock(args.database), OllamaJobAnalyser() as analyser:
+            processor = JobProcessor(JobStore(args.database), analyser)
+            results = [
+                processor.process_one(item, reevaluate=args.reevaluate)
+                if isinstance(item, InboxMessage)
+                else item
+                for item in items
+            ]
+    except RunLockHeldError as error:
+        return _report_locked(error)
+    report = run_report(
+        results,
+        messages,
+        skipped=_id_list(selection, "already_processed_ids"),
+        deferred=_id_list(selection, "deferred_ids"),
+    )
+    _write_json(report, None)
+    return 1 if report["summary"]["failed"] else 0
+
+
+def command_jobs_review(args: argparse.Namespace) -> int:
+    return review_jobs(_existing_job_store(args), Console())
+
+
+def command_jobs_list(args: argparse.Namespace) -> int:
+    sys.stdout.write(application_list(_existing_job_store(args), Console().width()))
+    return 0
+
+
 def command_filter_new(args: argparse.Namespace) -> int:
     source = _read_json(args.input)
     message_ids = source.get("message_ids") if isinstance(source, dict) else source
@@ -519,6 +581,29 @@ def build_parser() -> argparse.ArgumentParser:
     jobs_evaluate.add_argument("--output", type=Path)
     jobs_evaluate.set_defaults(handler=command_jobs_evaluate)
 
+    jobs_process = subparsers.add_parser(
+        "jobs-process", help="analyse full inbox messages into the job tracker"
+    )
+    jobs_process.add_argument("input", type=Path)
+    jobs_process.add_argument("--reevaluate", action="store_true")
+    jobs_process.add_argument(
+        "--selection", type=Path, help="a selection's JSON, to report its skipped and deferred IDs"
+    )
+    jobs_process.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
+    jobs_process.set_defaults(handler=command_jobs_process)
+
+    jobs_review = subparsers.add_parser(
+        "jobs-review", help="resolve the job-tracker messages waiting for review, one at a time"
+    )
+    jobs_review.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
+    jobs_review.set_defaults(handler=command_jobs_review)
+
+    jobs_list = subparsers.add_parser(
+        "jobs-list", help="list the job applications with their current status"
+    )
+    jobs_list.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
+    jobs_list.set_defaults(handler=command_jobs_list)
+
     filter_new = subparsers.add_parser(
         "filter-new", help="filter Gmail search IDs before full-message retrieval"
     )
@@ -633,6 +718,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         FileNotFoundError,
         GmailRetrievalError,
         GmailSignInError,
+        JobReviewError,
         json.JSONDecodeError,
         LedgerCorrectionError,
         NormalizationError,
