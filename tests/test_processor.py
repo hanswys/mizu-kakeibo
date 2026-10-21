@@ -490,3 +490,59 @@ def test_reevaluation_replaces_corrected_values(store, inbox_message) -> None:
 
     assert read_ledger(store) == [ledger_row(amount_minor="9900")]
     assert len(stored_corrections(store)) == 1
+
+
+def stored_removals(store):
+    with sqlite3.connect(store.database_path) as connection:
+        return connection.execute("SELECT analysis_id FROM removals").fetchall()
+
+
+def test_removal_deletes_the_expense_and_keeps_its_history(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+    store.correct_transaction("gmail", "message-1", merchant="Example Delivery")
+
+    removed = store.remove_transaction("gmail", "message-1")
+
+    assert removed == expense_output().transaction.model_copy(
+        update={"merchant": "Example Delivery"}
+    )
+    assert read_ledger(store) == []
+    assert store.is_processed("gmail", "message-1") is True
+    assert len(stored_corrections(store)) == 1
+    with sqlite3.connect(store.database_path) as connection:
+        analysis_id, decision = connection.execute(
+            "SELECT id, decision FROM analyses WHERE active = 1"
+        ).fetchone()
+    assert decision == "expense"
+    assert stored_removals(store) == [(analysis_id,)]
+    with pytest.raises(LedgerCorrectionError, match="no logged expense"):
+        store.remove_transaction("gmail", "message-1")
+    with pytest.raises(LedgerCorrectionError, match="no logged expense"):
+        store.correct_transaction("gmail", "message-1", merchant="Example Store")
+    assert len(stored_removals(store)) == 1
+
+
+def test_removal_keeps_the_review_resolution(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(review_output())).process_one(inbox_message)
+    store.resolve_review(
+        "gmail", "message-1", AnalysisDecision.EXPENSE, expense_output().transaction
+    )
+
+    store.remove_transaction("gmail", "message-1")
+
+    assert read_ledger(store) == []
+    assert store.list_review_items() == []
+    with sqlite3.connect(store.database_path) as connection:
+        assert connection.execute("SELECT decision FROM resolutions").fetchall() == [("expense",)]
+
+
+def test_reevaluation_logs_a_removed_expense_again(store, inbox_message) -> None:
+    InboxProcessor(store, FakeAnalyser(expense_output())).process_one(inbox_message)
+    store.remove_transaction("gmail", "message-1")
+
+    InboxProcessor(store, FakeAnalyser(expense_output(9900))).process_one(
+        inbox_message, reevaluate=True
+    )
+
+    assert read_ledger(store) == [ledger_row(amount_minor="9900")]
+    assert len(stored_removals(store)) == 1

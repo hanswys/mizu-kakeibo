@@ -71,7 +71,7 @@ Type a number to see that message: its sender, subject, received time, why the a
 
 | Key | Does |
 | --- | --- |
-| `e` | It is an expense. You are asked for the merchant, currency, amount, and date in turn; press Enter to take the value in brackets. Type the amount as the receipt shows it, such as `35.90`. |
+| `e` | It is an expense. You are asked for the merchant, currency, amount, and date in turn; press Enter to take the value in brackets. Type the amount as the receipt shows it, such as `35.90`, and the date you paid, such as `2026-10-01`. The prompt shows when the email arrived, but a receipt sent later can be for an earlier payment, so the date is never filled in for you. |
 | `n` | It is not an expense |
 | `m` | Shows the whole message; press `q` to come back |
 | `g` | Opens the message in Gmail |
@@ -84,7 +84,7 @@ You can also ask Claude Code in this repository, for example "resolve the Shopee
 
 ## Fixing a logged expense
 
-If an expense has the wrong merchant, amount, currency, or date, list its period with `mizu-kakeibo spend`. In Terminal the expenses are numbered:
+If an expense has the wrong merchant, amount, currency, or date, or is not your spending at all, list its period with `mizu-kakeibo spend`. In Terminal the expenses are numbered:
 
 ```text
 October 2026
@@ -97,15 +97,24 @@ October 2026
 Number to correct, or Enter to quit:
 ```
 
-Type a number, and you are asked for the merchant, currency, amount, and date in turn; press Enter to keep the value in brackets. Nothing is saved until you answer `y` to `Save?`, and then the list is shown again. Press Enter at the number prompt to quit.
+Type a number, then:
+
+| Key | Does |
+| --- | --- |
+| `c` | Corrects it. You are asked for the merchant, currency, amount, and date in turn; press Enter to keep the value in brackets. |
+| `n` | It is not an expense, such as a cost your employer pays back. It is removed from the ledger and every total. |
+| Enter | Goes back to the list |
+
+Nothing is saved until you answer `y` to `Save?`, and then the list is shown again. Press Enter at the number prompt to quit.
 
 You can also ask Claude Code, for example "correct the Grab expense on 17 October to RM26.00", or run `ledger-correct` with the message ID from the second column of `ledger.csv`:
 
 ```sh
 mizu-kakeibo ledger-correct gmail MESSAGE_ID --amount-minor 2600
+mizu-kakeibo ledger-correct gmail MESSAGE_ID --not-expense
 ```
 
-Either way the original decision is kept, so a correction can always be traced.
+Either way the original decision is kept, so a correction or removal can always be traced. A removed expense does not come back on the next sync.
 
 ## When something goes wrong
 

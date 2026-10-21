@@ -30,6 +30,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V1.1-3 | Correct an expense from the spending list | AFK | V1.1-2 |
 | V1.1-4 | Sync every hour instead of once a day | AFK | Version 1 |
 | V1.1-5 | Keep injected email text from hiding or redating a receipt | AFK | None |
+| V1.1-6 | Type the review date and remove a non-expense from the spending list | AFK | V1.1-3 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -466,11 +467,33 @@ The [transaction-date and payment-evidence checks](inbox-expense-contract.md#5-e
 - [x] The suite's attacks and held-out attacks are rerun with the checks, and the results and remaining gaps are recorded in the [prompt-injection test](prompt-injection-2026-10-21.md).
 - [ ] The installed copy runs with the checks.
 
+## Issue V1.1-6 Type the review date and remove a non-expense from the spending list
+
+**Type:** AFK
+
+**Status:** `in-progress` (requested on 2026-10-21, when a gym's company-claim receipt, sent on request weeks after the payment, was resolved in review with the received date as its default and counted as this week's spending. The user chose both fixes the same day and left reading attachments for later. Built on 2026-10-21 and tested with scripted input and a temporary database. Waits for the reinstall and the user's removal or redating of that expense.)
+
+**Blocked by:** V1.1-3
+
+### What to build
+
+In [review](MVP.md#review), ask for the date with no default, showing the received date only as a reminder. In [correcting from the spending list](MVP.md#spending-summaries), ask for `c` to correct or `n` for not an expense after a pick, and add the [removal](inbox-expense-contract.md#ledger-corrections) to the store and to `ledger-correct` as `--not-expense`, as defined in the [contract](inbox-expense-contract.md#10-spending-summaries). Point the README, the user guide, and the `/expense-sync` skill at it.
+
+### Acceptance criteria
+
+- [x] Resolving a review item as an expense asks for the date with no default, shows the received date in the prompt, and asks again after Enter.
+- [x] A picked expense in `spend` asks for `c` or `n`, and Enter returns to the list. `c` corrects as before.
+- [x] `n` removes the expense after confirmation: the transaction and ledger row are deleted, one removal is recorded, and the analysis, any resolution, and earlier corrections are kept.
+- [x] A removed expense cannot be removed or corrected again, is not analysed again by a sync, and is logged again only by an explicit re-evaluation.
+- [x] `ledger-correct --not-expense` removes the expense and rejects value options.
+- [x] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
+- [ ] The user reinstalls the `uv tool` copy and removes or redates the Anytime Fitness expense with `spend`.
+
 ## Version 1.1 completion gate
 
-Version 1.1 is complete when V1.1-1 to V1.1-5 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
+Version 1.1 is complete when V1.1-1 to V1.1-6 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
 
-Version 1.1 was first completed on 2026-10-18, when V1.1-1 and V1.1-2 met their acceptance criteria. It was reopened the same day for V1.1-3, after the MVP added correcting from the spending list, and on 2026-10-21 gained V1.1-4, after the MVP changed the scheduled sync to run every hour.
+Version 1.1 was first completed on 2026-10-18, when V1.1-1 and V1.1-2 met their acceptance criteria. It was reopened the same day for V1.1-3, after the MVP added correcting from the spending list, and on 2026-10-21 gained V1.1-4, after the MVP changed the scheduled sync to run every hour, V1.1-5, after a prompt-injection test, and V1.1-6, after the MVP removed the review date default and added removing an expense from the spending list.
 
 ## Scope changes
 

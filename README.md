@@ -201,6 +201,10 @@ uv run mizu-kakeibo ledger-correct gmail MESSAGE_ID --merchant "Example Delivery
   --database private-kakeibo.db --ledger private-ledger.csv
 ```
 
+Add `--not-expense`, with no fields, to remove an expense that is not the user's
+spending. The analysis and earlier corrections are kept, the removal is recorded,
+and the ledger row is deleted.
+
 Score the analyser against a private labelled dataset without touching the
 database or ledger. The dataset format and scoring rules are defined in the
 contract's evaluation section. The command prints a sanitized summary; `--output`

@@ -37,8 +37,13 @@ def correction_count(store: Store) -> int:
         return connection.execute("SELECT COUNT(*) FROM corrections").fetchone()[0]
 
 
+def removal_count(store: Store) -> int:
+    with store.connect() as connection:
+        return connection.execute("SELECT COUNT(*) FROM removals").fetchone()[0]
+
+
 def test_a_picked_expense_takes_its_logged_values_and_saves_after_confirmation(store) -> None:
-    console = FakeConsole(["2", "Grab", "", "", "", "y", ""])
+    console = FakeConsole(["2", "c", "Grab", "", "", "", "y", ""])
 
     assert correct_spending(store, MONTH, console) == 0
     assert console.output[0].splitlines() == [
@@ -51,6 +56,7 @@ def test_a_picked_expense_takes_its_logged_values_and_saves_after_confirmation(s
     ]
     assert console.prompts == [
         "Number to correct, or Enter to quit: ",
+        "c correct · n not an expense · Enter back: ",
         "Merchant [Grab Holdings Bhd]: ",
         "Currency [MYR]: ",
         "Amount in MYR [26.00]: ",
@@ -58,7 +64,7 @@ def test_a_picked_expense_takes_its_logged_values_and_saves_after_confirmation(s
         "Save? y/n: ",
         "Number to correct, or Enter to quit: ",
     ]
-    assert "Correcting  Sat 17 Oct  Grab Holdings Bhd  MYR 26.00" in console.output
+    assert "Picked  Sat 17 Oct  Grab Holdings Bhd  MYR 26.00" in console.output
     assert (
         "Was  Sat 17 Oct  Grab Holdings Bhd  MYR 26.00\n"
         "Now  Sat 17 Oct  Grab               MYR 26.00"
@@ -76,7 +82,7 @@ def test_a_picked_expense_takes_its_logged_values_and_saves_after_confirmation(s
 
 
 def test_a_new_currency_drops_the_amount_default_and_bad_values_are_asked_again(store) -> None:
-    console = FakeConsole(["9", "x", "1", "", "zzz", "jpy", "", "24.90", "2490", "17/10", ""])
+    console = FakeConsole(["9", "x", "1", "c", "", "zzz", "jpy", "", "24.90", "2490", "17/10", ""])
     console.answers += ["y", "q"]
 
     assert correct_spending(store, MONTH, console) == 0
@@ -89,7 +95,7 @@ def test_a_new_currency_drops_the_amount_default_and_bad_values_are_asked_again(
 
 
 def test_a_date_moved_out_of_the_period_leaves_the_list(store) -> None:
-    console = FakeConsole(["1", "", "", "", "2026-09-30", "y", ""])
+    console = FakeConsole(["1", "c", "", "", "", "2026-09-30", "y", ""])
 
     assert correct_spending(store, MONTH, console) == 0
     lists = [text for text in console.output if text.startswith("October 2026")]
@@ -98,7 +104,7 @@ def test_a_date_moved_out_of_the_period_leaves_the_list(store) -> None:
 
 
 def test_unchanged_or_declined_values_save_nothing(store) -> None:
-    console = FakeConsole(["1", "", "", "", "", "1", "Grab", "", "", "", "n", ""])
+    console = FakeConsole(["1", "c", "", "", "", "", "1", "c", "Grab", "", "", "", "n", ""])
 
     assert correct_spending(store, MONTH, console) == 0
     assert "Nothing changed." in console.output
@@ -113,16 +119,53 @@ def test_an_expense_removed_elsewhere_saves_nothing(store) -> None:
             connection.execute("DELETE FROM transactions WHERE message_id = 'm1'")
         return "y"
 
-    console = FakeConsole(["1", "Grab", "", "", "", remove_elsewhere, ""])
+    console = FakeConsole(["1", "c", "Grab", "", "", "", remove_elsewhere, ""])
 
     assert correct_spending(store, MONTH, console) == 0
     assert "This expense is no longer logged; nothing was saved." in console.output
     assert correction_count(store) == 0
 
 
+def test_not_an_expense_removes_it_after_confirmation(store) -> None:
+    console = FakeConsole(["2", "x", "n", "y", ""])
+
+    assert correct_spending(store, MONTH, console) == 0
+    assert "  Press c, n, or Enter." in console.output
+    assert "Not an expense: remove it from the ledger and every total" in console.output
+    assert "Removed." in console.output
+    assert transactions(store) == [("m1", "GrabFood", 2490, "MYR", "2026-10-10")]
+    assert removal_count(store) == 1
+    assert "m2" not in store.ledger_path.read_text()
+    lists = [text for text in console.output if text.startswith("October 2026")]
+    assert "Grab Holdings Bhd" not in lists[1]
+    assert "  Total  MYR 24.90 · 1 expense" in lists[1]
+
+
+def test_declining_or_going_back_removes_nothing(store) -> None:
+    console = FakeConsole(["2", "n", "n", "2", "", ""])
+
+    assert correct_spending(store, MONTH, console) == 0
+    assert "Not saved." in console.output
+    assert console.prompts.count("Number to correct, or Enter to quit: ") == 3
+    assert removal_count(store) == 0
+    assert len(transactions(store)) == 2
+
+
+def test_an_expense_removed_elsewhere_is_not_removed_again(store) -> None:
+    def remove_elsewhere() -> str:
+        store.remove_transaction("gmail", "m1")
+        return "y"
+
+    console = FakeConsole(["1", "n", remove_elsewhere, ""])
+
+    assert correct_spending(store, MONTH, console) == 0
+    assert "This expense is no longer logged; nothing was saved." in console.output
+    assert removal_count(store) == 1
+
+
 @pytest.mark.parametrize("leave", ["q", EOFError(), KeyboardInterrupt()])
 def test_leaving_at_any_prompt_saves_nothing(store, leave) -> None:
-    console = FakeConsole(["1", "Grab", "", "", leave])
+    console = FakeConsole(["1", "c", "Grab", "", "", leave])
 
     assert correct_spending(store, MONTH, console) == 0
     assert console.prompts[-1] == "Date [2026-10-10]: "
@@ -165,7 +208,7 @@ def test_spend_corrects_only_in_a_terminal_and_not_by_merchant(
     store = Store(private_live_paths / "kakeibo.sqlite3", private_live_paths / "ledger.csv")
     save(store, inbox_message, "m1", expense("GrabFood", 2490, date(2026, 10, 10)))
     monkeypatch.setattr(cli, "_today", lambda: TODAY)
-    console = FakeConsole(["1", "Grab", "", "", "", "y", ""])
+    console = FakeConsole(["1", "c", "Grab", "", "", "", "y", ""])
     monkeypatch.setattr(cli, "Console", lambda: console)
 
     assert cli.main(["spend", "month"]) == 0

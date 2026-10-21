@@ -332,7 +332,11 @@ class _Review(Prompter):
             None,
             lambda text: parse_amount(text, currency),
         )
-        transaction_date = self.ask_value("Date", entry.received.isoformat(), parse_date)
+        # The received date is only a reminder: a message waits for review because its
+        # evidence was incomplete, such as a receipt sent long after the payment.
+        transaction_date = self.ask_value(
+            f"Date paid, email arrived {entry.received.isoformat()}", None, parse_date
+        )
         return Transaction(
             merchant=merchant,
             amount_minor=amount,
