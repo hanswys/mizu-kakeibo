@@ -263,3 +263,74 @@ def test_foreign_currency_not_stated_in_the_message_goes_to_review(inbox_message
 
     assert result.decision.value == "needs_review"
     assert [field.value for field in result.missing_fields] == ["currency"]
+
+
+def output_content(decision: str, transaction_date: str = "2026-10-06") -> str:
+    content = json.loads(expense_content())
+    content["decision"] = decision
+    if decision == "expense":
+        content["transaction"]["transaction_date"] = transaction_date
+    else:
+        content["transaction"] = None
+    return json.dumps(content)
+
+
+@pytest.mark.parametrize("transaction_date", ["2026-09-29", "2026-10-06", "2026-10-07"])
+def test_expense_dated_near_the_received_day_is_kept(inbox_message, transaction_date) -> None:
+    content = output_content("expense", transaction_date)
+    analyser = OllamaAnalyser(client=client_for(content=content))
+
+    result = analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
+
+    assert result.transaction is not None
+    assert result.transaction.transaction_date.isoformat() == transaction_date
+
+
+@pytest.mark.parametrize("transaction_date", ["2025-01-01", "2026-09-28", "2026-10-08"])
+def test_expense_dated_far_from_the_received_day_goes_to_review(
+    inbox_message, transaction_date
+) -> None:
+    content = output_content("expense", transaction_date)
+    analyser = OllamaAnalyser(client=client_for(content=content))
+
+    result = analyser.analyse(ExpenseAnalysisInput.from_inbox_message(inbox_message))
+
+    assert result.decision.value == "needs_review"
+    assert result.transaction is None
+    assert [field.value for field in result.missing_fields] == ["transaction_date"]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Total paid: RM 26.50\nPaid by: Visa ending 4821",
+        "We have received your payment for order 123. Total payment: RM 26.70",
+        "Paid with Mastercard ending 1122. Order total: 249.70",
+        "Payment successful. Amount: MYR 38.00",
+        "Pembayaran berjaya. Jumlah dibayar RM 12.00",
+    ],
+)
+def test_not_expense_with_a_completed_payment_goes_to_review(inbox_message, text) -> None:
+    analyser = OllamaAnalyser(client=client_for(content=output_content("not_expense")))
+
+    result = analyser.analyse(expense_input(inbox_message, text))
+
+    assert result.decision.value == "needs_review"
+    assert result.missing_fields == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Your order has shipped. Order total: RM 26.50",
+        "Your payment of RM 26.50 was declined. Please update your payment method.",
+        "Thanks for paying us a visit last week!",
+        "Paid with love by the club volunteers.",
+    ],
+)
+def test_not_expense_without_a_completed_payment_is_kept(inbox_message, text) -> None:
+    analyser = OllamaAnalyser(client=client_for(content=output_content("not_expense")))
+
+    result = analyser.analyse(expense_input(inbox_message, text))
+
+    assert result.decision.value == "not_expense"

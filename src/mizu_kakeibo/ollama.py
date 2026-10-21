@@ -4,6 +4,7 @@ import json
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import timedelta, timezone
 from typing import Any, TypeVar
 
 import httpx
@@ -59,6 +60,64 @@ def enforce_currency_evidence(
         reason="The message does not state the currency of the amount",
         transaction=None,
         missing_fields=[MissingField.CURRENCY],
+    )
+
+
+TRANSACTION_DATE_DAYS_BEFORE = 7
+TRANSACTION_DATE_DAYS_AFTER = 1
+
+
+def enforce_transaction_date_window(
+    analyser_input: ExpenseAnalysisInput, output: ExpenseAnalysisOutput
+) -> ExpenseAnalysisOutput:
+    """Send an expense to review when its date is far from the day the message arrived."""
+    transaction = output.transaction
+    if transaction is None:
+        return output
+    received = analyser_input.message.received_at.astimezone(timezone.utc).date()
+    earliest = received - timedelta(days=TRANSACTION_DATE_DAYS_BEFORE)
+    latest = received + timedelta(days=TRANSACTION_DATE_DAYS_AFTER)
+    if earliest <= transaction.transaction_date <= latest:
+        return output
+    return ExpenseAnalysisOutput(
+        contract_version=ANALYSIS_OUTPUT_CONTRACT,
+        decision=AnalysisDecision.NEEDS_REVIEW,
+        reason="The transaction date is far from the day the message arrived",
+        transaction=None,
+        missing_fields=[MissingField.TRANSACTION_DATE],
+    )
+
+
+_COMPLETED_PAYMENT = re.compile(
+    r"\b(?:total|amount) paid\b"
+    r"|\bpaid (?:by|with|via|using)\b"
+    r"|\bpayment (?:successful|confirmed|received|completed)\b"
+    r"|\breceived your payment\b"
+    r"|\bthank you for your payment\b"
+    r"|\bcharged to\b"
+    r"|\bjumlah (?:yang )?dibayar\b"
+    r"|\bpembayaran berjaya\b",
+    re.IGNORECASE,
+)
+_AMOUNT = re.compile(r"(?<![\w.])\d[\d,]*\.\d{2}(?!\d)|(?<![A-Za-z])(?:RM|MYR)\s?\d", re.IGNORECASE)
+
+
+def enforce_payment_evidence(
+    analyser_input: ExpenseAnalysisInput, output: ExpenseAnalysisOutput
+) -> ExpenseAnalysisOutput:
+    """Send a not_expense to review when the message shows a completed payment and an amount."""
+    if output.decision is not AnalysisDecision.NOT_EXPENSE:
+        return output
+    message = analyser_input.message
+    text = f"{message.subject}\n{message.text}"
+    if not (_COMPLETED_PAYMENT.search(text) and _AMOUNT.search(text)):
+        return output
+    return ExpenseAnalysisOutput(
+        contract_version=ANALYSIS_OUTPUT_CONTRACT,
+        decision=AnalysisDecision.NEEDS_REVIEW,
+        reason="The message shows a completed payment",
+        transaction=None,
+        missing_fields=[],
     )
 
 
@@ -268,7 +327,9 @@ class OllamaAnalyser(OllamaRuntime):
     def analyse(self, analyser_input: ExpenseAnalysisInput) -> ExpenseAnalysisOutput:
         def parse(content: str) -> ExpenseAnalysisOutput:
             output = ExpenseAnalysisOutput.model_validate_json(content)
-            return enforce_currency_evidence(analyser_input, output)
+            output = enforce_currency_evidence(analyser_input, output)
+            output = enforce_transaction_date_window(analyser_input, output)
+            return enforce_payment_evidence(analyser_input, output)
 
         return self._chat(
             SYSTEM_PROMPT,

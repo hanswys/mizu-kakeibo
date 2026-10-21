@@ -348,6 +348,13 @@ Application code also enforces the currency rules from [section 3](#3-expense-an
 - `MYR` is shown by a ringgit marker (`RM`, `MYR`, or `ringgit`), or by the absence of any `$` amount.
 - Any other currency is shown by its ISO code as a separate word, or by an unambiguous marker: `US$` or `US dollar` for `USD`, `€` for `EUR`, and `£` for `GBP`.
 
+Application code also backs up the decision against text in the message that tries to instruct the model, because the [2026-10-21 prompt-injection test](prompt-injection-2026-10-21.md) showed that a line added to a genuine receipt could make the model return `not_expense` or report an injected date. Both checks run after the currency check, in the analyser, so evaluation and processing apply them alike:
+
+- **Transaction date.** A validated `expense` whose `transaction_date` is more than 7 days before, or more than 1 day after, the UTC calendar date of `received_at` is replaced with `needs_review`, a null transaction, `transaction_date` missing, and the reason `The transaction date is far from the day the message arrived`. The extra day allows for a Malaysia-time payment made after midnight that arrives on the previous UTC date.
+- **Payment evidence.** A validated `not_expense` is replaced with `needs_review`, a null transaction, no missing fields, and the reason `The message shows a completed payment` when the subject and body contain both a completed-payment phrase and an amount. Completed-payment phrases, matched case-insensitively as whole words, are `total paid`, `amount paid`, `paid by`, `paid with`, `paid via`, `paid using`, `payment successful`, `payment confirmed`, `payment received`, `payment completed`, `received your payment`, `thank you for your payment`, `charged to`, `jumlah dibayar`, `jumlah yang dibayar`, and `pembayaran berjaya`. An amount is a number with two decimal places, or a number directly after `RM` or `MYR`.
+
+Neither check can tell an injected value from a genuine one inside its limits: an injected date within the window, or a forged receipt, still passes.
+
 Model-reported confidence is intentionally absent from Version 0. It may be added later only if evaluation shows that it is calibrated and useful for review routing.
 
 ## 6. Processing, failure, and idempotency
