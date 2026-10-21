@@ -109,17 +109,17 @@ The user chose on 2026-10-18 to review in the terminal instead of on a browser p
 
 ### Scheduled sync
 
-Version 1 replaces the agent request with a daily sync that runs by itself on the user's laptop. The user chose this design on 2026-10-16 after a [scheduler spike](scheduler-spike-2026-10-16.md).
+Version 1 replaces the agent request with an hourly sync that runs by itself on the user's laptop. The user chose this design on 2026-10-16 after a [scheduler spike](scheduler-spike-2026-10-16.md).
 
 - Read Gmail with read-only access through the user's own Google sign-in, kept privately on the laptop. The user chose on 2026-10-16 that the job tracker uses the same sign-in when it reads Gmail this way. A [Gmail API spike](gmail-api-spike-2026-10-16.md) showed that this finds and reads the same messages as the agent-driven sync.
 - When the Gmail sign-in has expired or been removed, stop before reading any message and tell the user to sign in again. A sign-in should last without weekly renewal.
-- Try the sync every hour from 08:00 to 23:00 Malaysia time. The day is done after a sync with no failed and no deferred messages, and later hours that day do nothing.
+- Sync every hour from 08:00 to 23:00 Malaysia time, including after a sync earlier that day that left nothing to retry. The user chose this on 2026-10-21, replacing a rule that ended the day after the first such sync, because mail after the morning sync waited until the next day, so spending today was out of date and review items arrived a day late.
 - Run only while the laptop is open and fully awake. An hour missed while the laptop is closed or asleep is caught up the next time it is open within those hours, so a day with the laptop closed throughout has no sync, and the next sync picks up its messages.
 - Skip an hour when the laptop is on battery below 20%.
 - Select, filter, and analyse messages exactly as the agent-driven sync does: the same skip filter, the same review for oversized messages, and at most 25 new messages per sync, with the rest continuing in the next hour. The user chose on 2026-10-16 to keep the 25-message batch even though reading Gmail directly removes its original reason, the agent's context, because it keeps a sync to a few minutes and the laptop usable.
 - Never run two syncs at once. A sync that finds another one running, scheduled or started from chat, exits without doing anything.
 - Send a message to review after its analysis fails in three syncs, instead of retrying it forever.
-- After a sync that processed or failed any message, show a notification with the counts of expenses, review items, and failures. When there are review items or failures, also show a dialog with a "Review in Terminal" button, which opens Terminal and starts `mizu-kakeibo review`. A sync with nothing new stays silent.
+- After a sync that logged an expense, sent a message to review, or failed a message, show a notification with the counts of expenses, review items, and failures. When there are review items or failures, also show a dialog with a "Review in Terminal" button, which opens Terminal and starts `mizu-kakeibo review`. A sync with nothing new, or only non-expenses, stays silent. The user chose this on 2026-10-21 with the hourly sync, so ordinary mail does not show a notification every hour.
 - When a sync stops before reading any message, because the Gmail sign-in, the analyser, or the Gmail search failed, show a dialog that says what failed, and for the sign-in how to sign in again, at most once a day and with no notification. The user chose this on 2026-10-17, so a problem lasting several hours does not notify every hour.
 - Only a scheduled sync shows the notification and dialog.
 - Keep a private record of each sync's message IDs, counts, and errors for 90 days, never message content.

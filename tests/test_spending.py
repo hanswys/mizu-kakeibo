@@ -195,6 +195,12 @@ def test_last_sync_skips_gated_runs_and_describes_the_newest_attempt(tmp_path) -
             "2026-10-19T09:00:03+08:00 trigger=launchd outcome=low_power\n"
         )
     assert last_sync(log) == "Mon 19 Oct 08:00 · stopped at the Gmail sign-in"
+    with log.open("a", encoding="utf-8") as target:
+        target.write(
+            "2026-10-21T14:00:03+08:00 trigger=launchd outcome=synced run=20261021-140003 "
+            "expense=2 not_expense=0 needs_review=0 skipped=0 filtered=1 failed=0 deferred=0\n"
+        )
+    assert last_sync(log) == "Wed 21 Oct 14:00 · 2 expenses, 0 to review, 0 failed"
 
 
 def test_bare_command_shows_status_from_the_live_files(

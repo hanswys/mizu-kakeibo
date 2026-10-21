@@ -28,6 +28,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V1.1-1 | Show spending from the terminal without file paths | AFK | Version 1 |
 | V1.1-2 | Review messages in the terminal | AFK | V1.1-1 |
 | V1.1-3 | Correct an expense from the spending list | AFK | V1.1-2 |
+| V1.1-4 | Sync every hour instead of once a day | AFK | Version 1 |
 | V1.1-5 | Keep injected email text from hiding or redating a receipt | AFK | None |
 
 # Milestone Version 0 Prove the Idea
@@ -357,7 +358,7 @@ The user accepted Version 1 as complete on 2026-10-18, as recorded in [V1-6](#is
 
 ## Version 1.1 outcome
 
-Make the running app easy to use day to day: see what was spent, resolve review items, and correct logged expenses without opening the ledger or a browser page, or remembering commands, file paths, and message IDs.
+Make the running app easy to use day to day: see what was spent as the day goes on, resolve review items, and correct logged expenses without opening the ledger or a browser page, or remembering commands, file paths, and message IDs.
 
 ## Issue V1.1-1 Show spending from the terminal without file paths
 
@@ -424,6 +425,27 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 - [x] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
 - [ ] The user corrects a real expense with `spend` from the installed copy.
 
+## Issue V1.1-4 Sync every hour instead of once a day
+
+**Type:** AFK
+
+**Status:** `in-progress` (requested on 2026-10-21, when the user found that mail after the morning sync waited until the next day. The user chose the same day to notify only when a run logs an expense, adds a review item, or fails a message. Built on 2026-10-21 and tested with mocked Gmail, runtime, and macOS state. Waits for the reinstall and a same-day check on the laptop.)
+
+**Blocked by:** Version 1
+
+### What to build
+
+The [hourly scheduled sync](MVP.md#scheduled-sync): remove the gate that ends the day after the first clean run, and its field in the run record and log, and notify only for expenses, review items, and failures, as defined in the [contract](inbox-expense-contract.md#9-scheduled-run). Keep the window, the other gates, the lock, the batch, retries, and the dialogs. The LaunchAgent is unchanged. Point the README and the user guide at it.
+
+### Acceptance criteria
+
+- [x] A scheduled run in a full wake syncs in every window hour, including after a clean sync earlier that day, and no run checks or records whether the day is done.
+- [x] A run that logs an expense, stores a review item, or fails a message notifies its counts; a run with nothing new or only non-expenses is silent; dialogs are unchanged.
+- [x] Failed messages are still searched from the sync start next run, deferred messages continue next hour, and the failure dialog still shows at most once a day.
+- [x] `status` still shows the last scheduled sync, including from log lines written before the change.
+- [x] Tests use mocked Gmail, runtime, and macOS state, never the real files.
+- [ ] The user reinstalls the `uv tool` copy, and an expense received after an earlier clean sync that day is logged by a later hour the same day.
+
 ## Issue V1.1-5 Keep injected email text from hiding or redating a receipt
 
 **Type:** AFK
@@ -446,9 +468,9 @@ The [transaction-date and payment-evidence checks](inbox-expense-contract.md#5-e
 
 ## Version 1.1 completion gate
 
-Version 1.1 is complete when V1.1-1, V1.1-2, V1.1-3, and V1.1-5 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
+Version 1.1 is complete when V1.1-1 to V1.1-5 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
 
-Version 1.1 was first completed on 2026-10-18, when V1.1-1 and V1.1-2 met their acceptance criteria. It was reopened the same day for V1.1-3, after the MVP added correcting from the spending list.
+Version 1.1 was first completed on 2026-10-18, when V1.1-1 and V1.1-2 met their acceptance criteria. It was reopened the same day for V1.1-3, after the MVP added correcting from the spending list, and on 2026-10-21 gained V1.1-4, after the MVP changed the scheduled sync to run every hour.
 
 ## Scope changes
 

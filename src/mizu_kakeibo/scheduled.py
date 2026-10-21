@@ -38,6 +38,7 @@ REVIEW_SCRIPT = "review.command"
 _RUN_NAME = re.compile(r"^(\d{8}-\d{6})(?:-\d+)?$")
 GROUPS = ("expense", "not_expense", "needs_review", "skipped", "filtered", "failed", "deferred")
 ANALYSED = ("expense", "not_expense", "needs_review", "failed")
+NOTIFIED = ("expense", "needs_review", "failed")  # a run with only non-expenses is silent
 OSASCRIPT = "/usr/bin/osascript"
 TITLE = "Mizu Kakeibo"
 DIALOG_SECONDS = 3600
@@ -289,13 +290,6 @@ def _records(runs: Path) -> Iterator[tuple[datetime, dict[str, Any]]]:
             yield started, record
 
 
-def day_done(runs: Path, today: datetime) -> bool:
-    return any(
-        started.date() == today.date() and record.get("day_done") is True
-        for started, record in _records(runs)
-    )
-
-
 def failure_dialog_shown(runs: Path, today: datetime) -> bool:
     return any(
         started.date() == today.date() and record.get("dialog") == "failure"
@@ -487,9 +481,6 @@ def _locked_run(
 ) -> RunResult:
     delete_old_records(runs, log, started)
     base: dict[str, Any] = {"trigger": trigger}
-    if day_done(runs, started):
-        _append_log(log, started, {**base, "outcome": "done_today"})
-        return RunResult(0)
     wake = system.wake_state()
     if not wake.full:
         graphics = None if wake.capabilities is None else "Graphics" in wake.capabilities
@@ -549,13 +540,12 @@ def _locked_run(
             if result["status"] == "failed" and result["error"]
         }
     )
-    done = groups is not None and not groups["failed"] and not groups["deferred"]
     counts = None if groups is None else {group: len(ids) for group, ids in groups.items()}
     if counts is None:
         notification = False
         dialog = None if failure_dialog_shown(runs, started) else "failure"
     else:
-        notification = any(counts[group] for group in ANALYSED)
+        notification = any(counts[group] for group in NOTIFIED)
         dialog = "review" if counts["needs_review"] or counts["failed"] else None
     record = {
         "trigger": trigger,
@@ -576,7 +566,6 @@ def _locked_run(
         "groups": groups,
         "counts": counts,
         "message_errors": message_errors,
-        "day_done": done,
         "notification": notification,
         "dialog": dialog,
     }
@@ -588,7 +577,6 @@ def _locked_run(
         fields["stage"] = failed_stage
     else:
         fields.update(record["counts"])
-        fields["day_done"] = _yes_no(done)
     _append_log(log, started, fields)
     return RunResult(1 if groups is None or groups["failed"] else 0, record, unexpected)
 
