@@ -134,6 +134,7 @@ The user asked on 2026-10-18, after Version 1, for a quick way to see what they 
 - In a terminal, the spending command numbers the expenses it lists and asks for one to correct, so a wrong merchant, amount, currency, or date is fixed without looking up the message ID. Pressing Enter quits. Totals by merchant are not numbered, because each row groups several expenses.
 - A picked expense's merchant, currency, amount, and date are asked one at a time, as in [review](#review), with its logged values as the defaults. Nothing is saved until the user confirms, and the original decision is kept, as for any [correction](#personal-ledger). The user asked on 2026-10-18 for this to follow terminal review, and chose the same day to correct from the spending command itself rather than a separate one.
 - Commands use the live database and ledger unless told otherwise, so everyday use needs no file paths.
+- When changes have been merged to `main` since the installed copy was built, the summary says so and shows the commands to update it. The user asked for this on 2026-10-21, so updating does not depend on remembering it after each merge. Nothing updates itself.
 - A summary covers what the latest sync has logged; mail that arrived since is not included until the next sync.
 
 ## External payment applications

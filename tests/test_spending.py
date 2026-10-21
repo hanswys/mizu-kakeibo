@@ -171,6 +171,13 @@ def test_status_totals_today_week_and_month() -> None:
     assert lines[-1] == "  or a date as 2026-10-18, 2026-10, or 2026"
 
 
+def test_status_shows_the_update_commands_when_given() -> None:
+    lines = render_status(TODAY, [], 0, None, ["git pull", "uv tool install"]).splitlines()
+    start = lines.index("  A newer version is on main. To update, run:")
+    assert lines[start + 1 : start + 3] == ["    git pull", "    uv tool install"]
+    assert "A newer version" not in render_status(TODAY, [], 0, None)
+
+
 def test_last_sync_skips_gated_runs_and_describes_the_newest_attempt(tmp_path) -> None:
     log = tmp_path / "scheduled.log"
     assert last_sync(log) is None

@@ -28,6 +28,8 @@ mizu-kakeibo = "mizu_kakeibo.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/mizu_kakeibo"]
 
+[tool.hatch.build.hooks.custom]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"

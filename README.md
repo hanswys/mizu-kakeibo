@@ -124,7 +124,8 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.mizu-kakeibo.sync.pl
 ```
 
 To update it later, pull `main` and run the `uv tool install --reinstall` line
-again; the LaunchAgent does not change. Each run appends one line to
+again; the LaunchAgent does not change. `mizu-kakeibo` shows both commands when
+the installed copy is behind `main`. Each run appends one line to
 `~/mizu-kakeibo-private/live/scheduled.log`, and a run that passes the gates writes
 `run.json` in its own directory under `runs/`. After a run that analysed or failed a
 message, a notification shows its counts, and review items or failures also open a
