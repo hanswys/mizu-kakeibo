@@ -145,7 +145,7 @@ Only one sync runs at a time; another one started meanwhile exits without doing 
 
 ## Updating, pausing, and removing
 
-- **Update** after new changes are merged to `main`:
+- **Update** after new changes are merged to `main`. Running `mizu-kakeibo` shows these commands when an update is waiting:
 
   ```sh
   git -C ~/conductor/repos/mizu-kakeibo pull

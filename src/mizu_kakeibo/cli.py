@@ -55,6 +55,7 @@ from .storage import (
     Store,
 )
 from .transcript import collect_raw_messages, connector_message_metadata, current_session_transcript
+from .update import update_commands
 
 
 def _read_json(path: Path) -> Any:
@@ -103,6 +104,7 @@ def command_status(args: argparse.Namespace) -> int:
             entries,
             len(store.list_review_items()),
             last_sync(args.database.parent / "scheduled.log"),
+            update_commands(),
         )
     )
     return 0

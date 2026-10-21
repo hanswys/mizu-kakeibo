@@ -215,6 +215,7 @@ def render_status(
     entries: Sequence[LedgerEntry],
     review_count: int,
     sync: str | None,
+    update: Sequence[str] | None = None,
 ) -> str:
     """Summarize today, this week, and this month from the month's and week's entries."""
     week = parse_period("week", today)
@@ -233,6 +234,9 @@ def render_status(
     ]
     lines = [f"Mizu Kakeibo · {_day(today)}", ""]
     lines.extend(f"  {name:<11} {value}" for name, value in rows)
+    if update:
+        lines.extend(["", "  A newer version is on main. To update, run:"])
+        lines.extend(f"    {command}" for command in update)
     width = max(len(command) for command, _ in _EVERYDAY_COMMANDS)
     lines.append("")
     lines.extend(f"  {command:<{width}}  {meaning}" for command, meaning in _EVERYDAY_COMMANDS)
