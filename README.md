@@ -127,8 +127,8 @@ To update it later, pull `main` and run the `uv tool install --reinstall` line
 again; the LaunchAgent does not change. `mizu-kakeibo` shows both commands when
 the installed copy is behind `main`. Each run appends one line to
 `~/mizu-kakeibo-private/live/scheduled.log`, and a run that passes the gates writes
-`run.json` in its own directory under `runs/`. After a run that analysed or failed a
-message, a notification shows its counts, and review items or failures also open a
+`run.json` in its own directory under `runs/`. After a run that logged an expense, found a
+review item, or failed a message, a notification shows its counts, and review items or failures also open a
 dialog whose `Review in Terminal` button opens `~/mizu-kakeibo-private/live/review.command`
 in Terminal, which starts `mizu-kakeibo review`.
 A run that fails before reading any message, for example because the Gmail sign-in
