@@ -28,6 +28,7 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V1.1-1 | Show spending from the terminal without file paths | AFK | Version 1 |
 | V1.1-2 | Review messages in the terminal | AFK | V1.1-1 |
 | V1.1-3 | Correct an expense from the spending list | AFK | V1.1-2 |
+| V1.1-5 | Keep injected email text from hiding or redating a receipt | AFK | None |
 
 # Milestone Version 0 Prove the Idea
 
@@ -423,9 +424,29 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 - [x] Tests drive the prompts with scripted input and a temporary database, and never use the real files.
 - [ ] The user corrects a real expense with `spend` from the installed copy.
 
+## Issue V1.1-5 Keep injected email text from hiding or redating a receipt
+
+**Type:** AFK
+
+**Status:** `in-progress` (requested on 2026-10-21, when a [prompt-injection test](prompt-injection-2026-10-21.md) on the local model found that a line added to a genuine receipt could make it `not_expense` or change its date, and the user asked for a fix. The prompt stays at `expense-v0.9`, because a prompt change needs the private evaluation set, so the fix is in application code. Built and measured on synthetic emails on 2026-10-21. Waits for installation.)
+
+**Blocked by:** None
+
+### What to build
+
+The [transaction-date and payment-evidence checks](inbox-expense-contract.md#5-expense-analyser-output) after the currency check, and a repeatable synthetic prompt-injection suite in `evals/prompt-injection/` that runs through `evaluate()` on the pinned model.
+
+### Acceptance criteria
+
+- [x] An expense dated more than 7 days before, or more than 1 day after, its received date goes to review with `transaction_date` missing.
+- [x] A `not_expense` whose message shows a completed-payment phrase and an amount goes to review.
+- [x] Unit tests cover both checks, including messages that must keep their decision.
+- [x] The suite's attacks and held-out attacks are rerun with the checks, and the results and remaining gaps are recorded in the [prompt-injection test](prompt-injection-2026-10-21.md).
+- [ ] The installed copy runs with the checks.
+
 ## Version 1.1 completion gate
 
-Version 1.1 is complete when V1.1-1, V1.1-2, and V1.1-3 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
+Version 1.1 is complete when V1.1-1, V1.1-2, V1.1-3, and V1.1-5 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
 
 Version 1.1 was first completed on 2026-10-18, when V1.1-1 and V1.1-2 met their acceptance criteria. It was reopened the same day for V1.1-3, after the MVP added correcting from the spending list.
 
