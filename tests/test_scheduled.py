@@ -188,14 +188,13 @@ def test_a_scheduled_sync_writes_its_record_and_one_log_line(run, capsys) -> Non
         "power_source": "ac",
         "battery_percent": None,
     }
-    assert record["day_done"] is True
+    assert "day_done" not in record
     assert run.system.kept_awake == 1
     assert run.system.started == []
     [line] = run.log()
     assert line == (
         "2026-10-17T10:00:04+08:00 trigger=command outcome=synced run=20261017-100004 "
-        "expense=1 not_expense=1 needs_review=0 skipped=0 filtered=1 failed=0 deferred=0 "
-        "day_done=yes"
+        "expense=1 not_expense=1 needs_review=0 skipped=0 filtered=1 failed=0 deferred=0"
     )
     assert capsys.readouterr().out == line + "\n"
     run_directory = run.live / "runs" / "20261017-100004"
@@ -223,23 +222,22 @@ def test_a_run_that_finds_the_lock_held_logs_it_and_records_nothing(run, hold_ru
     assert not run.script.exists()
 
 
-def test_a_done_day_is_not_run_again_but_the_next_day_is(run) -> None:
+def test_every_hour_syncs_after_a_clean_sync_earlier_that_day(run) -> None:
     assert run.main() == 0
-    run.fake.requests.clear()
+    run.clock.time += timedelta(hours=1)
+    assert run.main() == 0  # nothing new
+    later = api_message("m4", "Example Cafe <receipts@cafe.invalid>", "Receipt", offset=3)
+    run.fake.messages["m4"] = later
     run.clock.time += timedelta(hours=1)
     assert run.main() == 0
-    assert run.log()[-1] == "2026-10-17T11:00:04+08:00 trigger=command outcome=done_today"
-    assert run.fake.requests == []
-    assert len(run.system.notifications) == 1  # the first run's
-    assert len(run.records()) == 1
-
-    run.clock.time = datetime(2026, 10, 18, 8, 0, 4, tzinfo=MALAYSIA)
-    assert run.main() == 0
-    assert run.fake.requests != []
-    assert len(run.records()) == 2
+    first, second, third = run.records()
+    assert second["groups"]["skipped"] == ["m1", "m3"]
+    assert third["groups"]["expense"] == ["m4"]
+    assert [line.split()[2] for line in run.log()] == ["outcome=synced"] * 3
+    assert len(run.system.notifications) == 2  # the hour with nothing new is silent
 
 
-def test_a_manual_sync_does_not_mark_the_day_done(run, capsys) -> None:
+def test_a_scheduled_sync_runs_after_a_manual_sync(run, capsys) -> None:
     manual = ["sync", *run.argv[1:]]
     assert cli.main(manual) == 0
     capsys.readouterr()
@@ -270,7 +268,7 @@ def test_a_maintenance_wake_or_closed_lid_skips_until_the_next_full_wake(run, wa
     run.system.wake = FULL_WAKE
     run.clock.time += timedelta(minutes=40)
     assert run.main() == 0
-    assert run.records()[0]["day_done"] is True
+    assert run.records()[0]["outcome"] == "synced"
 
 
 @pytest.mark.parametrize(
@@ -302,7 +300,7 @@ def test_a_stopped_runtime_is_started_before_retrieval(run) -> None:
     assert run.system.sleeps == 3
     record = run.records()[0]
     assert record["runtime_started_with"] == "kickstart"
-    assert record["day_done"] is True
+    assert record["outcome"] == "synced"
 
 
 def test_a_runtime_that_never_answers_fails_before_retrieval(run) -> None:
@@ -315,7 +313,6 @@ def test_a_runtime_that_never_answers_fails_before_retrieval(run) -> None:
     assert record["failed_stage"] == "runtime"
     assert record["groups"] is None
     assert record["counts"] is None
-    assert record["day_done"] is False
     assert "did not answer within 30 seconds" in record["error"]
     assert run.log()[-1].endswith("outcome=failed run=20261017-100004 stage=runtime")
     assert record["notification"] is False
@@ -359,7 +356,7 @@ def test_an_expired_sign_in_fails_before_the_runtime_and_retrieval(run, monkeypa
     assert "gmail-sign-in" in record["error"]
 
 
-def test_a_failed_day_is_retried_with_a_full_search_in_the_next_hour(run) -> None:
+def test_a_failed_message_is_retried_with_a_full_search_in_the_next_hour(run) -> None:
     run.fake.raw_errors["m1"] = 429
     assert run.main() == 1
     first = run.records()[0]
@@ -367,7 +364,6 @@ def test_a_failed_day_is_retried_with_a_full_search_in_the_next_hour(run) -> Non
     assert first["message_errors"] == {
         "m1": "Gmail retrieval error: Gmail API returned HTTP 429 rateLimitExceeded"
     }
-    assert first["day_done"] is False
 
     # A run that fails before processing does not lose the need for a full search.
     run.clock.time += timedelta(hours=1)
@@ -383,29 +379,26 @@ def test_a_failed_day_is_retried_with_a_full_search_in_the_next_hour(run) -> Non
     third = run.records()[2]
     assert third["full_search"] is True
     assert third["groups"]["expense"] == ["m1"]
-    assert third["day_done"] is True
     search = next(r for r in run.fake.requests if r.url.path.endswith("/messages"))
     assert search.url.params["q"].endswith("after:2026/10/15")
 
     run.clock.time += timedelta(hours=1)
     assert run.main() == 0
-    assert run.log()[-1].endswith("outcome=done_today")
+    assert run.records()[3]["full_search"] is False
 
 
-def test_a_deferred_day_is_continued_in_the_next_hour(run, monkeypatch) -> None:
+def test_a_deferred_message_is_continued_in_the_next_hour(run, monkeypatch) -> None:
     monkeypatch.setattr(cli, "SYNC_BATCH_LIMIT", 1)
     assert run.main() == 0
     first = run.records()[0]
     assert first["groups"]["deferred"] == ["m3"]
-    assert first["day_done"] is False
-    assert run.log()[-1].endswith("deferred=1 day_done=no")
+    assert run.log()[-1].endswith("deferred=1")
 
     run.clock.time += timedelta(hours=1)
     assert run.main() == 0
     second = run.records()[1]
     assert second["full_search"] is False
     assert second["groups"]["not_expense"] == ["m3"]
-    assert second["day_done"] is True
 
 
 def test_records_and_log_lines_older_than_90_days_are_deleted(run) -> None:
@@ -484,7 +477,7 @@ def test_the_fake_system_sees_a_held_lock(run) -> None:
     assert run.system.shown_under_lock == 1
 
 
-def test_a_sync_that_analysed_messages_notifies_its_counts_without_a_dialog(run) -> None:
+def test_a_sync_that_logged_an_expense_notifies_its_counts_without_a_dialog(run) -> None:
     assert run.main() == 0
     [record] = run.records()
     assert record["notification"] is True
@@ -495,6 +488,16 @@ def test_a_sync_that_analysed_messages_notifies_its_counts_without_a_dialog(run)
     assert run.system.dialogs == []
     assert run.system.shown_under_lock == 0
     assert not run.script.exists()
+
+
+def test_a_sync_with_only_non_expenses_is_silent(run) -> None:
+    del run.fake.messages["m1"]
+    assert run.main() == 0
+    [record] = run.records()
+    assert record["counts"]["not_expense"] == 1
+    assert record["notification"] is False
+    assert record["dialog"] is None
+    assert run.silent()
 
 
 def test_a_sync_with_nothing_new_is_silent(run, capsys) -> None:

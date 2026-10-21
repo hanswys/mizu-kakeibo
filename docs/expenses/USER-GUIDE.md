@@ -17,10 +17,10 @@ Everything stays on the laptop, under `~/mizu-kakeibo-private/live/`:
 
 ## A normal day
 
-1. **The first sync of the day.** At the first hour from 08:00 when the laptop is open and awake, the sync reads up to 25 new messages. Promotions, social updates, and job alerts are skipped without being read.
-2. **The notification.** If it analysed anything, a notification says how many messages it checked and how many were expenses, to review, or failed, for example `1 expense · 2 to review · 0 failed`. macOS shows it as coming from Script Editor, and a Focus mode may hold it in Notification Center. A sync with nothing new stays silent.
+1. **Every hour.** At each hour from 08:00 to 23:00 when the laptop is open and awake, the sync reads up to 25 new messages that arrived since the last one. Promotions, social updates, and job alerts are skipped without being read.
+2. **The notification.** If it logged an expense, found something to review, or failed a message, a notification says how many messages it checked and how many were expenses, to review, or failed, for example `1 expense · 2 to review · 0 failed`. macOS shows it as coming from Script Editor, and a Focus mode may hold it in Notification Center. A sync with nothing new, or only messages that are not expenses, stays silent.
 3. **The dialog.** If anything needs review or failed, a dialog also appears. Click **Review in Terminal** to resolve the messages now, or **Dismiss** to deal with them later. It closes by itself after an hour.
-4. **The rest of the day.** Once a sync finishes with no failures and nothing left over, later hours do nothing until tomorrow. Mail that arrives after that is picked up the next morning. If a sync failed or left messages for later, the next hour continues.
+4. **Through the day.** Mail that arrives after a sync is picked up the next hour, so `mizu-kakeibo` shows today's spending as the day goes on. If a sync failed or left messages for later, the next hour retries or continues them.
 
 A sync is skipped, and tried again the next hour, while the lid is closed, the laptop is asleep, or it is on battery below 20%. An hour missed that way runs when you next open the laptop, or at the next hour.
 
@@ -129,7 +129,7 @@ tail ~/mizu-kakeibo-private/live/scheduled.log
 | `outcome=` | Meaning |
 | --- | --- |
 | `synced` | A sync ran; the counts follow |
-| `done_today` | Today's sync already finished |
+| `done_today` | Only in lines before 21 Oct 2026, when the day ended after the first clean sync |
 | `not_full_wake` | The lid was closed or the laptop was not fully awake |
 | `low_power` | On battery below 20% |
 | `locked` | Another sync was already running |
@@ -137,8 +137,8 @@ tail ~/mizu-kakeibo-private/live/scheduled.log
 
 ## Running a sync yourself
 
-- **Right now, as the schedule would:** `launchctl kickstart gui/$(id -u)/com.mizu-kakeibo.sync`. It does nothing if today's sync has already finished, and a sync after midnight counts for the new day.
-- **Without notifications, and without finishing the day:** `mizu-kakeibo sync`.
+- **Right now, as the schedule would:** `launchctl kickstart gui/$(id -u)/com.mizu-kakeibo.sync`.
+- **Without notifications or dialogs:** `mizu-kakeibo sync`.
 - **From a chat, as a backup:** ask Claude Code in this repository to run `/expense-sync`. It reads Gmail through the claude.ai connector instead of the app's own sign-in.
 
 Only one sync runs at a time; another one started meanwhile exits without doing anything.
