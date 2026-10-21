@@ -159,7 +159,16 @@ def test_status_totals_today_week_and_month() -> None:
         "  To review   2 items",
         "  Last sync   Sun 18 Oct 01:38 · 1 expense",
     ]
-    assert lines[-1].split()[:2] == ["mizu-kakeibo", "review"]
+    commands = [line.split()[:2] for line in lines if line.startswith("  mizu-kakeibo")]
+    assert [words[1] for words in commands[1:]] == [
+        "spend",
+        "spend",
+        "review",
+        "sync",
+        "gmail-sign-in",
+    ]
+    assert lines[-2].startswith("  Instead of month: today, yesterday, week, last-week,")
+    assert lines[-1] == "  or a date as 2026-10-18, 2026-10, or 2026"
 
 
 def test_last_sync_skips_gated_runs_and_describes_the_newest_attempt(tmp_path) -> None:

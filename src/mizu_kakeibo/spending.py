@@ -14,6 +14,15 @@ HOME_CURRENCY = "MYR"
 PERIOD_NAMES = ("today", "yesterday", "week", "last-week", "month", "last-month", "year")
 MERCHANT_WIDTH = 32
 
+_EVERYDAY_COMMANDS = (
+    ("mizu-kakeibo", "this summary"),
+    ("mizu-kakeibo spend month", "this month's expenses, numbered to correct one"),
+    ("mizu-kakeibo spend month --by merchant", "this month's total for each merchant"),
+    ("mizu-kakeibo review", "resolve what needs review, one at a time"),
+    ("mizu-kakeibo sync", "read new inbox messages now"),
+    ("mizu-kakeibo gmail-sign-in", "sign in to Gmail again, read-only"),
+)
+
 _FAILED_STAGES = {
     "sign_in": "the Gmail sign-in",
     "runtime": "the analyser (Ollama)",
@@ -224,12 +233,15 @@ def render_status(
     ]
     lines = [f"Mizu Kakeibo · {_day(today)}", ""]
     lines.extend(f"  {name:<11} {value}" for name, value in rows)
+    width = max(len(command) for command, _ in _EVERYDAY_COMMANDS)
+    lines.append("")
+    lines.extend(f"  {command:<{width}}  {meaning}" for command, meaning in _EVERYDAY_COMMANDS)
+    others = [name for name in PERIOD_NAMES if name != "month"]
     lines.extend(
         [
             "",
-            "  mizu-kakeibo spend month                 this month's expenses",
-            "  mizu-kakeibo spend month --by merchant   this month by merchant",
-            "  mizu-kakeibo review                      resolve what needs review",
+            f"  Instead of month: {', '.join(others)},",
+            f"  or a date as {today:%Y-%m-%d}, {today:%Y-%m}, or {today:%Y}",
         ]
     )
     return "\n".join(lines) + "\n"
