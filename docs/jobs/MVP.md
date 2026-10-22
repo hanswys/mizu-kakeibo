@@ -97,6 +97,8 @@ Field definitions belong in the contract.
 
 The first run processes inbox messages received on or after 2026-04-14, six months before this scope was set. Older emails are ignored. Later runs process only messages not yet recorded as processed.
 
+The backlog takes several runs. Each run processes the oldest new messages up to its batch size, 25 unless the user asks for more, and reports the rest as deferred to a later run, as the user chose on 2026-10-22.
+
 ## MVP components
 
 ### Gmail retrieval
@@ -107,7 +109,8 @@ The first run processes inbox messages received on or after 2026-04-14, six mont
 - Retrieve and normalize the full message using the same Gmail adapter and `inbox-message/v0` envelope as the [expense contract](../expenses/inbox-expense-contract.md).
 - Prefer the HTML alternative over the plain-text alternative when normalizing. Some LinkedIn notifications carry the job title and status only in their HTML part. The shared adapter offers this as an option that the expense app does not use, so expense behavior is unchanged.
 - Keep its own processed-message tracking and its own private database, separate from the expense app. The two apps do not share processing state.
-- If the job tracker later reads Gmail through the Gmail API instead of an agent, it uses the expense app's read-only Google sign-in rather than its own, as the user chose on 2026-10-16. The sign-in is shared; searches and processing state are not.
+- Read Gmail through the Gmail API with the expense app's read-only Google sign-in rather than its own, as the user chose on 2026-10-16, in one sync command the user runs by hand, as the user chose on 2026-10-22. No agent or Gmail connector takes part. The sign-in is shared; searches and processing state are not.
+- Search the whole period since the first-run start on every run, so a message that failed in an earlier run is always found again.
 
 ### Status analyser
 
@@ -170,14 +173,14 @@ The MVP does not require:
 
 ## Definition of done
 
-The MVP is complete when one agent request:
+The MVP is complete when, with each command started by hand in the terminal:
 
-1. Finds inbox messages not yet processed by the job tracker, limited on the first run to messages received on or after 2026-04-14.
-2. Does not reprocess Gmail message IDs already recorded.
-3. Sends every new message through the same status analyser.
-4. Records each successful analysis as `status_update`, `not_application`, or `needs_review`.
-5. Creates or updates exactly one application per company and job title, applies the status change rules, and links every source message.
-6. Presents review items, including suggested matches, beside their source emails and applies resolved items to the application list.
-7. Shows the application list with each application's current status.
+1. A sync finds inbox messages not yet processed by the job tracker, limited to messages received on or after 2026-04-14.
+2. A sync does not reprocess Gmail message IDs already recorded.
+3. A sync sends every new message through the same status analyser.
+4. A sync records each successful analysis as `status_update`, `not_application`, or `needs_review`.
+5. A sync creates or updates exactly one application per company and job title, applies the status change rules, and links every source message.
+6. Review presents review items, including suggested matches, beside their source emails and applies resolved items to the application list.
+7. The application list shows each application's current status.
 
 The analyser and matching must first pass the private evaluation described under [Testing](#testing).

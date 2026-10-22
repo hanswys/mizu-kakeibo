@@ -18,7 +18,8 @@ The roadmap samples real email layouts, settles the rules, tests parsing and mat
 | J0-4 | Build the private evaluation set | HITL | J0-2 |
 | J0-5 | Evaluate the status analyser and matching | HITL | J0-3, J0-4 |
 | J0.5-1 | Build one repeatable local job-tracker run | AFK | J0-5 proceed gate |
-| J0.5-2 | Connect and approve the agent-driven sync | HITL | J0.5-1 |
+| J0.5-2 | Retrieve job messages through the Gmail API | AFK | J0.5-1 |
+| J0.5-3 | First sync and approval | HITL | J0.5-2 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -214,21 +215,43 @@ Create one command that accepts a batch of full Gmail messages from the agent an
 - [x] Tests use sanitized fixtures and mocked model responses, and cover all three decisions, missing company or title, multiple updates to one application, two roles at one company, out-of-order emails, re-application after rejection, contradictory outcomes, likely matches and aliases, invalid model output, replay, and review correction.
 - [x] Credentials, real email content, and databases are excluded from version control.
 
-## Issue J0.5-2 Connect and approve the agent-driven sync
+## Issue J0.5-2 Retrieve job messages through the Gmail API
 
-**Type:** HITL
+**Type:** AFK
 
-**Status:** `needs-triage`
+**Status:** `complete` (2026-10-22. Triage chose a `jobs-sync` command on the Gmail API only, with the expense app's read-only sign-in and no connector skill; a default of 25 new messages per run with `--limit` for larger backlog batches; manual runs only; and a search from 2026-04-14 on every run, with no metadata requests for processed IDs, instead of a full search after failures. Handoff B's backlog count, about 5,200 messages at about 0.5 s per sequential metadata request, then led to requesting metadata only for the oldest window that holds a run's batch. See the MVP's [Gmail retrieval](MVP.md#gmail-retrieval) and the contract's [inbox retrieval](job-tracker-contract.md#1-inbox-retrieval). The first real sync is left to J0.5-3.)
 
 **Blocked by:** J0.5-1
 
 ### What to build
 
-Connect Gmail MCP retrieval to the local command. Run the first sync over emails received on or after 2026-04-14, then verify an incremental run. Finish with a `proceed`, `revise`, or `stop` decision.
+Add `jobs-sync`, which searches, selects, and fetches new inbox messages through the shared Gmail API retrieval against the job tracker's own store, and processes them through the existing job processor. Make the expense skip filter and its search terms parameters of the shared selection, so expense behavior is unchanged, and retry rate-limited Gmail requests so backlog runs do not fail on quota.
 
 ### Acceptance criteria
 
-- [ ] The first run retrieves all inbox emails received on or after 2026-04-14, and none earlier.
+- [x] `jobs-sync` reads the shared sign-in without opening a browser, takes the job tracker's own run lock, and checks the analyser runtime before any Gmail request.
+- [x] It searches every inbox message since 2026-04-14 with no skip filter, selects against the job store only, fetches `raw`, and normalizes preferring HTML.
+- [x] Processed IDs get no metadata request, a backlog run requests metadata only for the oldest window that holds its batch, and a message that failed before newer ones is found by the next run.
+- [x] Rate-limited requests are retried with backoff, and tests show a run succeeding through refusals and failing cleanly past the retries.
+- [x] The report matches `jobs-process --selection`, including `skim`, with an `already_processed` count; any failure exits with status 1, and a held lock reports `locked`.
+- [x] The expense sync's search, requests, and report are unchanged, and its tests pass unchanged.
+- [x] Tests use fictional fixtures and a fake Gmail client only; a dry run against a scratch database succeeds.
+
+## Issue J0.5-3 First sync and approval
+
+**Type:** HITL
+
+**Status:** `needs-triage`
+
+**Blocked by:** J0.5-2
+
+### What to build
+
+Run the first sync over emails received on or after 2026-04-14, in as many `jobs-sync` runs as the backlog needs, then verify an incremental run. Finish with a `proceed`, `revise`, or `stop` decision.
+
+### Acceptance criteria
+
+- [ ] The first sync retrieves all inbox emails received on or after 2026-04-14, and none earlier.
 - [ ] The result identifies status-update, not-application, review, skipped, and failed message IDs.
 - [ ] The user checks the application list against their own knowledge of their applications.
 - [ ] Review items can be resolved while viewing the original Gmail message.

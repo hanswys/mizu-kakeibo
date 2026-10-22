@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
-from datetime import datetime, timezone
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import quote
 
 import httpx
@@ -14,9 +16,14 @@ from google.auth.transport import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from .constants import GMAIL_API_BASE_URL, GMAIL_READONLY_SCOPE, GMAIL_REQUEST_TIMEOUT_SECONDS
-from .selection import Selection, search_query, select_new_messages
-from .storage import Store
+from .constants import (
+    GMAIL_API_BASE_URL,
+    GMAIL_RATE_LIMIT_MAX_WAIT_SECONDS,
+    GMAIL_READONLY_SCOPE,
+    GMAIL_REQUEST_TIMEOUT_SECONDS,
+    SKIPPED_SEARCH_TERMS,
+)
+from .selection import Selection, is_filtered, search_query, select_new_messages
 
 GMAIL_API_DIRECTORY = Path.home() / "mizu-kakeibo-private" / "gmail-api"
 CLIENT_SECRET_FILE = "client_secret.json"
@@ -25,6 +32,7 @@ ISSUED_FILE = "token-readonly.issued"
 
 SIGN_IN_COMMAND = "mizu-kakeibo gmail-sign-in"
 _RAW_FIELDS = ("id", "threadId", "internalDate", "labelIds", "raw")
+_RATE_LIMIT_REASONS = frozenset({"rateLimitExceeded", "userRateLimitExceeded"})
 
 
 class GmailSignInError(RuntimeError):
@@ -126,20 +134,53 @@ def sign_in(directory: Path = GMAIL_API_DIRECTORY) -> Credentials:
     return credentials
 
 
-def _error_reason(response: httpx.Response) -> str:
+def _reason(response: httpx.Response) -> str | None:
     try:
         error = response.json().get("error", {})
         reason = error.get("errors", [{}])[0].get("reason") or error.get("status")
     except (json.JSONDecodeError, AttributeError, IndexError, TypeError):
-        reason = None
-    return f"HTTP {response.status_code}" + (f" {reason}" if isinstance(reason, str) else "")
+        return None
+    return reason if isinstance(reason, str) else None
+
+
+def _error_reason(response: httpx.Response) -> str:
+    reason = _reason(response)
+    return f"HTTP {response.status_code}" + (f" {reason}" if reason else "")
+
+
+def _rate_limited(response: httpx.Response) -> bool:
+    if response.status_code == 429:
+        return True
+    return response.status_code == 403 and _reason(response) in _RATE_LIMIT_REASONS
+
+
+def _retry_wait(response: httpx.Response, default: float) -> float:
+    """Wait the response's `Retry-After` seconds, capped, or the default when it gives none."""
+    try:
+        seconds = float(response.headers.get("Retry-After", ""))
+    except ValueError:
+        return default
+    return min(max(seconds, 0.0), GMAIL_RATE_LIMIT_MAX_WAIT_SECONDS)
 
 
 class GmailApiClient:
-    """Read-only Gmail API calls for one sync. Responses never carry `snippet` out."""
+    """Read-only Gmail API calls for one sync. Responses never carry `snippet` out.
 
-    def __init__(self, credentials: Credentials, *, client: httpx.Client | None = None) -> None:
+    A rate-limited request is retried once after each of `rate_limit_waits`, in seconds; with
+    none, as the expense sync uses it, the first refusal is a retrieval error.
+    """
+
+    def __init__(
+        self,
+        credentials: Credentials,
+        *,
+        client: httpx.Client | None = None,
+        rate_limit_waits: Sequence[float] = (),
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         self._credentials = credentials
+        self._rate_limit_waits = tuple(rate_limit_waits)
+        self._sleep = sleep
         self._owns_client = client is None
         self._client = client or httpx.Client(
             base_url=GMAIL_API_BASE_URL, timeout=GMAIL_REQUEST_TIMEOUT_SECONDS
@@ -155,9 +196,9 @@ class GmailApiClient:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+    def _send(self, path: str, params: dict[str, Any]) -> httpx.Response:
         try:
-            response = self._client.get(
+            return self._client.get(
                 path,
                 params=params,
                 headers={"Authorization": f"Bearer {self._credentials.token}"},
@@ -166,6 +207,14 @@ class GmailApiClient:
             raise GmailRetrievalError(
                 f"Gmail API request failed: {type(error).__name__}"
             ) from error
+
+    def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+        response = self._send(path, params)
+        for wait in self._rate_limit_waits:
+            if not _rate_limited(response):
+                break
+            self._sleep(_retry_wait(response, wait))
+            response = self._send(path, params)
         if response.status_code == 401:
             raise GmailSignInError(f"Gmail refused the sign-in; run `{SIGN_IN_COMMAND} --replace`")
         if response.is_error:
@@ -248,21 +297,97 @@ class Retrieval:
     failures: dict[str, str]
 
 
+class ProcessedMessages(Protocol):
+    """An app's processed-message store: the expense `Store` or the job tracker's `JobStore`."""
+
+    def filter_new_ids(self, provider: str, message_ids: list[str]) -> list[str]: ...
+
+    def latest_received_at(self, provider: str) -> datetime | None: ...
+
+
+def _oldest_new_ids(
+    gmail: GmailApiClient,
+    store: ProcessedMessages,
+    new_ids: list[str],
+    *,
+    received_since: datetime,
+    skipped_terms: str,
+    limit: int,
+    now: datetime,
+) -> list[str]:
+    """Return the new IDs in the oldest search window from the start that holds `limit` of them.
+
+    The window ends a day after the newest processed message, or after the start, and doubles
+    that distance until it holds the batch or reaches now. Epoch seconds make its bounds exact,
+    so every new ID outside it is newer than every one inside it.
+    """
+    pending = set(new_ids)
+    latest = store.latest_received_at("gmail")
+    base = max(received_since, latest) if latest is not None else received_since
+    span = timedelta(days=1)
+    while base + span < now:
+        terms = (
+            "in:inbox",
+            skipped_terms,
+            f"after:{int(received_since.timestamp()) - 1}",
+            f"before:{int((base + span).timestamp())}",
+        )
+        window = [
+            message_id
+            for message_id in gmail.list_message_ids(" ".join(term for term in terms if term))
+            if message_id in pending
+        ]
+        if len(window) >= limit:
+            return window
+        span *= 2
+    return new_ids
+
+
 def retrieve_new_messages(
     gmail: GmailApiClient,
-    store: Store,
+    store: ProcessedMessages,
     *,
     received_since: datetime,
     limit: int,
     full: bool = False,
+    skip_filter: Callable[[dict[str, Any]], bool] | None = is_filtered,
+    skipped_terms: str = SKIPPED_SEARCH_TERMS,
+    new_metadata_only: bool = False,
 ) -> Retrieval:
     """Search, select, and fetch new inbox messages as the connector sync does.
+
+    The defaults are the expense sync's. The job tracker passes no skip filter or skipped
+    search terms, and turns on `new_metadata_only`: the search starts at the exact start, IDs
+    already processed get no metadata request and are reported as already processed in search
+    order, and while more new IDs remain than the limit, only those in the oldest window that
+    holds the limit get one. The others are deferred, newest last, as search order suggests.
 
     A failed search or metadata request raises before anything is fetched. A failed fetch is
     reported for its message, which stays unprocessed and is retried by a later sync.
     """
     latest = None if full else store.latest_received_at("gmail")
-    message_ids = gmail.list_message_ids(search_query(received_since, latest))
+    message_ids = gmail.list_message_ids(
+        search_query(received_since, latest, skipped_terms=skipped_terms, exact=new_metadata_only)
+    )
+    known: list[str] = []
+    later: list[str] = []
+    if new_metadata_only:
+        new_ids = store.filter_new_ids("gmail", message_ids)
+        new_set = set(new_ids)
+        known = [message_id for message_id in message_ids if message_id not in new_set]
+        message_ids = new_ids
+        if len(new_ids) > limit:
+            message_ids = _oldest_new_ids(
+                gmail,
+                store,
+                new_ids,
+                received_since=received_since,
+                skipped_terms=skipped_terms,
+                limit=limit,
+                now=datetime.now(timezone.utc),
+            )
+            window = set(message_ids)
+            later = [message_id for message_id in reversed(new_ids) if message_id not in window]
     metadata = {message_id: gmail.message_metadata(message_id) for message_id in message_ids}
     selection = select_new_messages(
         metadata,
@@ -270,7 +395,14 @@ def retrieve_new_messages(
         lambda new_ids: store.filter_new_ids("gmail", new_ids),
         received_since=received_since,
         limit=limit,
+        skip_filter=skip_filter,
     )
+    if known or later:
+        selection = replace(
+            selection,
+            already_processed_ids=known + selection.already_processed_ids,
+            deferred_ids=selection.deferred_ids + later,
+        )
     messages: dict[str, dict[str, Any]] = {}
     failures: dict[str, str] = {}
     for message_id in selection.message_ids:

@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .constants import SYNC_BATCH_LIMIT, SYNC_RECEIVED_SINCE
+from .constants import GMAIL_RATE_LIMIT_WAITS, SYNC_BATCH_LIMIT, SYNC_RECEIVED_SINCE
 from .correction import correct_spending
 from .evaluation import evaluate, load_dataset
 from .gmail_api import (
@@ -24,6 +24,7 @@ from .gmail_api import (
     sign_in,
 )
 from .jobs.analyser import OllamaJobAnalyser
+from .jobs.constants import JOBS_RECEIVED_SINCE, JOBS_SYNC_BATCH_LIMIT
 from .jobs.evaluation import evaluate as evaluate_jobs
 from .jobs.evaluation import load_dataset as load_jobs_dataset
 from .jobs.processor import JobProcessingResult, JobProcessor, parse_job_message, run_report
@@ -415,6 +416,63 @@ def command_jobs_process(args: argparse.Namespace) -> int:
     return 1 if report["summary"]["failed"] else 0
 
 
+def _process_job_retrieved(
+    processor: JobProcessor,
+    retrieval: Retrieval,
+    message_id: str,
+    messages: dict[str, InboxMessage],
+) -> JobProcessingResult:
+    error = retrieval.failures.get(message_id)
+    if error is None:
+        try:
+            message = parse_job_message(retrieval.messages[message_id])
+        except (NormalizationError, ValidationError) as normalization_error:
+            error = f"normalization failed: {normalization_error}"
+        else:
+            messages[message_id] = message
+            return processor.process_one(message)
+    return JobProcessingResult("gmail", message_id, ProcessingStatus.FAILED, error=error)
+
+
+def command_jobs_sync(args: argparse.Namespace) -> int:
+    if args.limit < 1:
+        raise ValueError("the batch limit must be at least 1")
+    messages: dict[str, InboxMessage] = {}
+    try:
+        with run_lock(args.database):
+            credentials = load_credentials(args.gmail_directory)
+            store = JobStore(args.database)
+            client = GmailApiClient(credentials, rate_limit_waits=GMAIL_RATE_LIMIT_WAITS)
+            with client as gmail, OllamaJobAnalyser() as analyser:
+                analyser.verify_runtime()
+                retrieval = retrieve_new_messages(
+                    gmail,
+                    store,
+                    received_since=datetime.fromisoformat(JOBS_RECEIVED_SINCE),
+                    limit=args.limit,
+                    full=True,
+                    skip_filter=None,
+                    skipped_terms="",
+                    new_metadata_only=True,
+                )
+                processor = JobProcessor(store, analyser)
+                results = [
+                    _process_job_retrieved(processor, retrieval, message_id, messages)
+                    for message_id in retrieval.selection.message_ids
+                ]
+    except RunLockHeldError as error:
+        return _report_locked(error)
+    # Every run searches from the start, so its processed IDs are counted, not listed.
+    report = run_report(results, messages, deferred=retrieval.selection.deferred_ids)
+    report = {
+        "summary": report.pop("summary"),
+        "already_processed": len(retrieval.selection.already_processed_ids),
+        **report,
+    }
+    _write_json(report, None)
+    return 1 if report["summary"]["failed"] else 0
+
+
 def command_jobs_review(args: argparse.Namespace) -> int:
     return review_jobs(_existing_job_store(args), Console())
 
@@ -615,6 +673,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     jobs_process.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
     jobs_process.set_defaults(handler=command_jobs_process)
+
+    jobs_sync = subparsers.add_parser(
+        "jobs-sync",
+        help="read new inbox messages through the Gmail API into the job tracker",
+    )
+    jobs_sync.add_argument(
+        "--limit",
+        type=int,
+        default=JOBS_SYNC_BATCH_LIMIT,
+        help=f"new messages to process, oldest first (default: {JOBS_SYNC_BATCH_LIMIT})",
+    )
+    jobs_sync.add_argument("--gmail-directory", type=Path, default=GMAIL_API_DIRECTORY)
+    jobs_sync.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
+    jobs_sync.set_defaults(handler=command_jobs_sync)
 
     jobs_review = subparsers.add_parser(
         "jobs-review", help="resolve the job-tracker messages waiting for review, one at a time"

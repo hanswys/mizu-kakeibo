@@ -17,6 +17,9 @@ KEEP_ALIVE = "30s"
 GMAIL_API_BASE_URL = "https://gmail.googleapis.com/gmail/v1/users/me/"
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GMAIL_REQUEST_TIMEOUT_SECONDS = 30.0
+# Waits before each retry of a rate-limited Gmail API request, for a caller that retries.
+GMAIL_RATE_LIMIT_WAITS = (2.0, 4.0, 8.0, 16.0, 32.0, 64.0)
+GMAIL_RATE_LIMIT_MAX_WAIT_SECONDS = 64.0
 
 SYNC_RECEIVED_SINCE = "2026-10-16T00:00:00+08:00"
 SYNC_BATCH_LIMIT = 25
