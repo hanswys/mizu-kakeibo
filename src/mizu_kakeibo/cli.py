@@ -495,6 +495,22 @@ def command_review_resolve(args: argparse.Namespace) -> int:
 
 
 def command_ledger_correct(args: argparse.Namespace) -> int:
+    if args.not_expense:
+        values = (args.merchant, args.amount_minor, args.currency, args.transaction_date)
+        if any(value is not None for value in values):
+            raise LedgerCorrectionError("--not-expense takes no values to correct")
+        removed = _store(args).remove_transaction(args.provider, args.message_id)
+        _write_json(
+            {
+                "provider": args.provider,
+                "message_id": args.message_id,
+                "status": "removed",
+                "previous": removed.model_dump(mode="json"),
+                "transaction": None,
+            },
+            None,
+        )
+        return 0
     correction = _store(args).correct_transaction(
         args.provider,
         args.message_id,
@@ -710,6 +726,9 @@ def build_parser() -> argparse.ArgumentParser:
     correct.add_argument("--amount-minor", type=int)
     correct.add_argument("--currency")
     correct.add_argument("--transaction-date")
+    correct.add_argument(
+        "--not-expense", action="store_true", help="remove the expense from the ledger"
+    )
     _add_storage_options(correct)
     correct.set_defaults(handler=command_ledger_correct)
     return parser

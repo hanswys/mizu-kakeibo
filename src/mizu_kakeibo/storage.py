@@ -140,6 +140,13 @@ CREATE TABLE IF NOT EXISTS corrections (
     FOREIGN KEY (analysis_id) REFERENCES analyses(id)
 );
 
+CREATE TABLE IF NOT EXISTS removals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    analysis_id INTEGER NOT NULL UNIQUE,
+    removed_at TEXT NOT NULL,
+    FOREIGN KEY (analysis_id) REFERENCES analyses(id)
+);
+
 CREATE TABLE IF NOT EXISTS analysis_failures (
     provider TEXT NOT NULL,
     message_id TEXT NOT NULL,
@@ -519,6 +526,33 @@ class Store:
             )
         self.export_ledger()
         return correction
+
+    def remove_transaction(self, provider: str, message_id: str) -> Transaction:
+        """Mark a logged expense as not an expense, keeping its analysis and corrections."""
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT analysis_id, merchant, amount_minor, currency, transaction_date "
+                "FROM transactions WHERE provider = ? AND message_id = ?",
+                (provider, message_id),
+            ).fetchone()
+            if row is None:
+                raise LedgerCorrectionError("no logged expense for this source")
+            connection.execute(
+                "INSERT INTO removals(analysis_id, removed_at) VALUES (?, ?)",
+                (row["analysis_id"], _utc_now()),
+            )
+            connection.execute(
+                "DELETE FROM transactions WHERE provider = ? AND message_id = ?",
+                (provider, message_id),
+            )
+        self.export_ledger()
+        return Transaction(
+            merchant=row["merchant"],
+            amount_minor=row["amount_minor"],
+            currency=row["currency"],
+            transaction_date=date.fromisoformat(row["transaction_date"]),
+        )
 
     def export_ledger(self) -> None:
         lock_path = self.ledger_path.with_name(f".{self.ledger_path.name}.lock")

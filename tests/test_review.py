@@ -154,24 +154,26 @@ def test_the_list_and_an_item_show_the_message_without_saving(store, inbox_messa
     assert resolutions(store) == []
 
 
-def test_an_expense_takes_its_defaults_and_saves_after_confirmation(store, inbox_message) -> None:
+def test_an_expense_takes_its_defaults_but_the_date_must_be_typed(store, inbox_message) -> None:
     add(store, inbox_message, "1a")
-    console = FakeConsole(["1", "e", "", "", "12.50", "", "y"])
+    console = FakeConsole(["1", "e", "", "", "12.50", "", "2026-10-01", "y"])
 
     assert review(store, console) == 0
-    assert console.prompts[2:6] == [
+    assert console.prompts[2:7] == [
         "Merchant [Example Store]: ",
         "Currency [MYR]: ",
         "Amount in MYR, such as 12.50: ",
-        "Date [2026-10-18]: ",
+        "Date paid, email arrived 2026-10-18: ",
+        "Date paid, email arrived 2026-10-18: ",
     ]
-    assert "Expense  Sun 18 Oct  Example Store  MYR 12.50" in console.output
+    assert "  Type the date as YYYY-MM-DD." in console.output
+    assert "Expense  Thu  1 Oct  Example Store  MYR 12.50" in console.output
     assert resolutions(store) == [
-        ("1a", "expense", "Example Store", 1250, "MYR", "2026-10-18"),
+        ("1a", "expense", "Example Store", 1250, "MYR", "2026-10-01"),
     ]
     assert "Saved." in console.output
     assert console.output[-1] == "Nothing to review."
-    assert "1a,Example Store,1250,MYR,2026-10-18" in store.ledger_path.read_text()
+    assert "1a,Example Store,1250,MYR,2026-10-01" in store.ledger_path.read_text()
 
 
 def test_invalid_values_are_explained_and_asked_again(store, inbox_message) -> None:
@@ -265,7 +267,7 @@ def test_leaving_at_any_prompt_saves_nothing(store, inbox_message, leave) -> Non
     console = FakeConsole(["1", "e", "", "", "12.50", leave])
 
     assert review(store, console) == 0
-    assert console.prompts[-1] == "Date [2026-10-18]: "
+    assert console.prompts[-1] == "Date paid, email arrived 2026-10-18: "
     assert resolutions(store) == []
 
 

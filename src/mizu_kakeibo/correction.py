@@ -16,6 +16,8 @@ from .review import (
 from .spending import Period, expense_row, render_spending, table
 from .storage import LedgerCorrectionError, LedgerEntry, Store
 
+ACTIONS = "c correct · n not an expense · Enter back: "
+
 
 def major_amount(amount_minor: int, currency: str) -> str:
     """Show an amount in minor units as it is typed at the amount prompt, such as `1234.50`."""
@@ -53,7 +55,7 @@ class _Correction(Prompter):
             if picked is None:
                 return
             self.console.write()
-            self.correct(entries[picked])
+            self.act(entries[picked])
             self.console.write()
 
     def pick(self, count: int) -> int | None:
@@ -65,15 +67,39 @@ class _Correction(Prompter):
                 return int(answer) - 1
             self.console.write(f"  Type a number from 1 to {count}, or press Enter to quit.")
 
-    def correct(self, entry: LedgerEntry) -> None:
-        """Ask for each value with the logged one as its default, and save after confirmation."""
+    def act(self, entry: LedgerEntry) -> None:
+        """Correct the picked expense's values or remove it as not an expense."""
         previous = Transaction(
             merchant=entry.merchant,
             amount_minor=entry.amount_minor,
             currency=entry.currency,
             transaction_date=entry.transaction_date,
         )
-        self.console.write("Correcting  " + "  ".join(_row(previous)))
+        self.console.write("Picked  " + "  ".join(_row(previous)))
+        while True:
+            key = self.ask(ACTIONS).strip().lower()
+            if not key:
+                return
+            if key == "c":
+                self.correct(entry, previous)
+                return
+            if key == "n":
+                self.remove(entry)
+                return
+            self.console.write("  Press c, n, or Enter.")
+
+    def remove(self, entry: LedgerEntry) -> None:
+        if not self.confirm("Not an expense: remove it from the ledger and every total"):
+            return
+        try:
+            self.store.remove_transaction(entry.provider, entry.message_id)
+        except LedgerCorrectionError:
+            self.console.write("This expense is no longer logged; nothing was saved.")
+        else:
+            self.console.write("Removed.")
+
+    def correct(self, entry: LedgerEntry, previous: Transaction) -> None:
+        """Ask for each value with the logged one as its default, and save after confirmation."""
         self.console.write("Press Enter for the value in brackets.")
         merchant = self.ask_value("Merchant", entry.merchant, parse_merchant)
         currency = self.ask_value("Currency", entry.currency, parse_currency)

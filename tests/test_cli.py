@@ -353,6 +353,44 @@ def test_ledger_correct_rewrites_the_ledger_row_once(tmp_path, monkeypatch, caps
     assert "no logged expense" in capsys.readouterr().err
 
 
+def test_ledger_correct_not_expense_removes_the_ledger_row(tmp_path, monkeypatch, capsys) -> None:
+    source = tmp_path / "gmail.json"
+    source.write_text(json.dumps(gmail_message()), encoding="utf-8")
+    ledger = tmp_path / "ledger.csv"
+    storage = ["--database", str(tmp_path / "private.sqlite3"), "--ledger", str(ledger)]
+    monkeypatch.setattr(cli, "OllamaAnalyser", FakeOllamaAnalyser)
+    assert cli.main(["process", str(source)] + storage) == 0
+    capsys.readouterr()
+
+    remove = ["ledger-correct", "gmail", "message-1", "--not-expense"]
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(remove + ["--merchant", "Example"] + storage)
+    assert exit_info.value.code == 2
+    assert "takes no values" in capsys.readouterr().err
+
+    assert cli.main(remove + storage) == 0
+    assert json.loads(capsys.readouterr().out) == {
+        "provider": "gmail",
+        "message_id": "message-1",
+        "status": "removed",
+        "previous": {
+            "merchant": "Example Store",
+            "amount_minor": 4250,
+            "currency": "MYR",
+            "transaction_date": "2026-10-06",
+        },
+        "transaction": None,
+    }
+    assert ledger.read_text(encoding="utf-8").splitlines() == [
+        "source_provider,gmail_message_id,merchant,amount_minor,currency,transaction_date",
+    ]
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(remove + storage)
+    assert exit_info.value.code == 2
+    assert "no logged expense" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("reevaluate", [[], ["--reevaluate"]])
 def test_process_records_nothing_while_another_run_holds_the_lock(
     tmp_path, monkeypatch, capsys, hold_run_lock, reevaluate
