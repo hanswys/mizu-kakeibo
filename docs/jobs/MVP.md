@@ -10,14 +10,16 @@ It does not track implementation status or prescribe detailed schemas and invari
 
 The job tracker follows the status of the user's job applications using the emails they cause in Gmail: notifications from LinkedIn and Jobstreet, and messages from employers, their hiring systems, and recruiters. Those emails report events such as an application being submitted, viewed, rejected, or advanced to an interview.
 
-Sampling showed that LinkedIn and Jobstreet send only submitted, viewed, and rejected notices. Interview invitations and most outcomes come from employers' own addresses and hiring systems, so a filter on known senders would miss them. Like the [expense MVP](../expenses/MVP.md), the job tracker therefore considers every inbox message and lets the analyser decide which ones concern a job application.
+Sampling showed that LinkedIn and Jobstreet send only submitted, viewed, and rejected notices. Interview invitations and most outcomes come from employers' own addresses and hiring systems, so a filter on known senders would miss them. The job tracker therefore has no sender filter. Gmail's own search keeps only inbox messages that contain at least one of a short list of job words, such as application, interview, or role, and the analyser decides which of those concern a job application.
+
+The job-word search was adopted on 2026-10-23, before the first sync, because analysing every message took about 7 s each and the first run alone would have taken close to an hour. It cut the messages since the start from 453 to 191. Every one of the 46 real status emails and 7 review emails in the private evaluation set contains a job word. The trade-off is accepted: an email without any job word is never analysed, and nothing reports it, so a status email worded without them is missed silently. The contract lists the words.
 
 ## Core workflow
 
 Applications are stateful entities. One application is updated by several emails over time, whereas each expense is an independent event. Matching a new email to the right application is the core problem.
 
 ```text
-New Gmail inbox message
+New Gmail inbox message that contains a job word
   -> Skip if the Gmail message ID was already processed by the job tracker
   -> Retrieve the full message
   -> LLM analysis returns a structured result
@@ -95,7 +97,7 @@ Field definitions belong in the contract.
 
 ## First run
 
-The first run processes inbox messages received on or after 2026-10-08, Malaysia time, as the user chose on 2026-10-22. This is a fixed date, not a rolling window. Older emails are ignored, so a later update for an application made before 2026-10-08 has no earlier record to match and creates a new application. Later runs process only messages not yet recorded as processed.
+The first run processes inbox messages with a job word received on or after 2026-10-08, Malaysia time, as the user chose on 2026-10-22. This is a fixed date, not a rolling window. Older emails are ignored, so a later update for an application made before 2026-10-08 has no earlier record to match and creates a new application. Later runs process only messages not yet recorded as processed.
 
 The backlog takes several runs. Each run processes the oldest new messages up to its batch size, 25 unless the user asks for more, and reports the rest as deferred to a later run, as the user chose on 2026-10-22.
 
@@ -103,7 +105,7 @@ The backlog takes several runs. Each run processes the oldest new messages up to
 
 ### Gmail retrieval
 
-- Search all inbox messages, without a sender filter.
+- Search the inbox messages that contain a job word, without a sender filter or a Gmail category exclusion.
 - Keep the Gmail message ID as the unique source identifier.
 - Skip processed IDs unless the user explicitly requests re-evaluation.
 - Retrieve and normalize the full message using the same Gmail adapter and `inbox-message/v0` envelope as the [expense contract](../expenses/inbox-expense-contract.md).
@@ -176,7 +178,7 @@ The MVP does not require:
 
 The MVP is complete when, with each command started by hand in the terminal:
 
-1. A sync finds inbox messages not yet processed by the job tracker, limited to messages received on or after 2026-10-08.
+1. A sync finds inbox messages not yet processed by the job tracker, limited to messages with a job word received on or after 2026-10-08.
 2. A sync does not reprocess Gmail message IDs already recorded.
 3. A sync sends every new message through the same status analyser.
 4. A sync records each successful analysis as `status_update`, `not_application`, or `needs_review`.

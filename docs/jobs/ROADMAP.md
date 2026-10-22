@@ -241,7 +241,7 @@ Add `jobs-sync`, which searches, selects, and fetches new inbox messages through
 
 **Type:** HITL
 
-**Status:** `needs-triage`
+**Status:** `in-progress` (2026-10-23. Before the first batch finished, the user chose to shorten the backlog: `jobs-sync` now searches only inbox messages with a [job word](job-tracker-contract.md#1-inbox-retrieval), which cut the messages since the start from 453 to 191, about 22 minutes of model time, so the backlog runs as one `--limit 200` sync instead of 25-message batches. Every real status and review email in the J0-4 set contains a job word.)
 
 **Blocked by:** J0.5-2
 
@@ -251,7 +251,7 @@ Run the first sync over emails received on or after 2026-10-08, in as many `jobs
 
 ### Acceptance criteria
 
-- [ ] The first sync retrieves all inbox emails received on or after 2026-10-08, and none earlier.
+- [ ] The first sync retrieves all inbox emails with a job word received on or after 2026-10-08, and none earlier.
 - [ ] The result identifies status-update, not-application, review, skipped, and failed message IDs.
 - [ ] The user checks the application list against their own knowledge of their applications.
 - [ ] Review items can be resolved while viewing the original Gmail message.

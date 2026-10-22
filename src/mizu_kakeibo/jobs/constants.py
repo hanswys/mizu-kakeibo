@@ -6,6 +6,28 @@ JOBS_PROMPT_VERSION = "jobs-v0.2"
 # The first-run start (MVP); every jobs-sync searches from it (contract §1).
 JOBS_RECEIVED_SINCE = "2026-10-08T00:00:00+08:00"
 JOBS_SYNC_BATCH_LIMIT = 25
+# Gmail searches only messages that contain one of these words (contract §1).
+JOBS_SEARCH_WORDS = (
+    "application",
+    "applications",
+    "applied",
+    "applying",
+    "interview",
+    "interviews",
+    "candidate",
+    "candidacy",
+    "position",
+    "role",
+    "hiring",
+    "recruitment",
+    "recruiter",
+    "resume",
+    "CV",
+    "shortlisted",
+    "assessment",
+    "offer",
+)
+JOBS_SEARCH_TERMS = f"({' OR '.join(JOBS_SEARCH_WORDS)})"
 
 GROUNDING_FAILURE_REASON = "Extracted value not found in message"
 MISSING_VALUE_REASON = "Analyser reported a missing value"

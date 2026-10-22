@@ -25,7 +25,7 @@ from .gmail_api import (
     sign_in,
 )
 from .jobs.analyser import OllamaJobAnalyser
-from .jobs.constants import JOBS_RECEIVED_SINCE, JOBS_SYNC_BATCH_LIMIT
+from .jobs.constants import JOBS_RECEIVED_SINCE, JOBS_SEARCH_TERMS, JOBS_SYNC_BATCH_LIMIT
 from .jobs.evaluation import evaluate as evaluate_jobs
 from .jobs.evaluation import load_dataset as load_jobs_dataset
 from .jobs.processor import JobProcessingResult, JobProcessor, parse_job_message, run_report
@@ -463,7 +463,7 @@ def command_jobs_sync(args: argparse.Namespace) -> int:
                     limit=args.limit,
                     full=True,
                     skip_filter=None,
-                    skipped_terms="",
+                    search_terms=JOBS_SEARCH_TERMS,
                     new_metadata_only=True,
                 )
                 processor = JobProcessor(store, analyser)

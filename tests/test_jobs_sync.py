@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -14,7 +15,7 @@ from jobs_fakes import ScriptedOllama, other, update
 from mizu_kakeibo import cli, gmail_api
 from mizu_kakeibo.constants import GMAIL_API_BASE_URL, GMAIL_READONLY_SCOPE
 from mizu_kakeibo.gmail_api import GmailApiClient
-from mizu_kakeibo.jobs.constants import JOBS_RECEIVED_SINCE
+from mizu_kakeibo.jobs.constants import JOBS_RECEIVED_SINCE, JOBS_SEARCH_TERMS
 from mizu_kakeibo.jobs.storage import JobStore
 from mizu_kakeibo.selection import search_query, select_new_messages
 
@@ -22,7 +23,7 @@ START = datetime.fromisoformat(JOBS_RECEIVED_SINCE)
 LINKEDIN = "LinkedIn <jobs-noreply@linkedin.com>"
 CAREERS = "Example Careers <careers@example.invalid>"
 DIGEST = "Example Digest <digest@example.invalid>"
-QUERY = f"in:inbox after:{int(START.timestamp()) - 1}"
+QUERY = f"in:inbox {JOBS_SEARCH_TERMS} after:{int(START.timestamp()) - 1}"
 
 ANSWERS = {
     "Your application was sent": update("Example Company", "Software Engineer", "applied"),
@@ -51,10 +52,10 @@ def raw_alternative(sender: str, subject: str, plain: str, html: str) -> str:
     return base64.urlsafe_b64encode(rfc822.encode()).decode().rstrip("=")
 
 
-def gmail_message(message_id, received, sender, subject, *, labels=("INBOX",)) -> dict:
+def gmail_message(message_id, received, sender, subject, *, labels=("INBOX",), html=None) -> dict:
     # The job title is only in the HTML alternative, as in some LinkedIn notifications.
     plain = f"An update from {sender}: see the HTML version."
-    html = (
+    html = html or (
         f"<p>{subject}.</p><p>Example Company - Software Engineer: "
         "your application has an update.</p>"
     )
@@ -64,6 +65,7 @@ def gmail_message(message_id, received, sender, subject, *, labels=("INBOX",)) -
         "internalDate": str(received),
         "labelIds": list(labels),
         "sender": sender,
+        "text": f"{subject} {plain} {html}",
         "raw": raw_alternative(sender, subject, plain, html),
     }
 
@@ -71,7 +73,8 @@ def gmail_message(message_id, received, sender, subject, *, labels=("INBOX",)) -
 class FakeGmail:
     """A mocked Gmail API whose search lists newest first and can refuse requests.
 
-    A search applies `in:inbox` and epoch-second `after:` and `before:` terms, and answers
+    A search applies `in:inbox`, a bracketed group of words joined by `OR`, which one word of
+    the message must match, and epoch-second `after:` and `before:` terms, and answers
     HTTP 204 with no body when nothing matches, as Gmail does under a `fields` mask.
     `refusals` maps `list`, `metadata:<id>`, or `raw:<id>` to the responses to send, one per
     request, before answering normally.
@@ -135,6 +138,11 @@ class FakeGmail:
 
 def matches(query: str, message: dict) -> bool:
     seconds = int(message["internalDate"]) // 1000
+    if group := re.search(r"\(([^)]*)\)", query):
+        words = {word.lower() for word in group[1].split(" OR ")}
+        if not words & set(re.findall(r"[a-z]+", message["text"].lower())):
+            return False
+        query = query.replace(group[0], "")
     for term in query.split():
         name, _, value = term.partition(":")
         if term == "in:inbox" and "INBOX" not in message["labelIds"]:
@@ -234,6 +242,20 @@ def test_jobs_sync_processes_every_new_inbox_message_oldest_first(jobs_sync, cap
     assert "Software Engineer" in stored.content.text
     for path in jobs_sync.database.parent.iterdir():
         assert b"Fictional snippet" not in path.read_bytes()
+
+
+def test_only_messages_with_a_job_word_are_searched(jobs_sync, capsys) -> None:
+    jobs_sync.fake.messages["news"] = gmail_message(
+        "news", at(2), DIGEST, "Weekly news", html="<p>Nothing about work here.</p>"
+    )
+    code, report = run(jobs_sync, capsys)
+
+    assert code == 0
+    assert jobs_sync.fake.queries == [QUERY] * 2
+    assert "news" not in jobs_sync.fake.of("metadata") + jobs_sync.fake.of("raw")
+    assert report["summary"]["status_update"] == ["j1", "j2"]
+    assert report["summary"]["not_application"] == ["j3"]
+    assert len(jobs_sync.ollama.calls) == 3
 
 
 def test_a_replay_requests_no_metadata_for_processed_messages(jobs_sync, capsys) -> None:
@@ -408,7 +430,7 @@ def test_selection_without_a_skip_filter_keeps_categories_and_job_senders() -> N
 
 
 def test_the_search_leaves_out_no_categories_when_given_no_terms() -> None:
-    assert search_query(START, None, skipped_terms="") == "in:inbox after:2026/10/07"
+    assert search_query(START, None, search_terms="") == "in:inbox after:2026/10/07"
     assert search_query(START, None) == (
         "in:inbox -category:promotions -category:social after:2026/10/07"
     )

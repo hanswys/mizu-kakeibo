@@ -115,7 +115,7 @@ def search_query(
     received_since: datetime,
     latest_processed: datetime | None,
     *,
-    skipped_terms: str = SKIPPED_SEARCH_TERMS,
+    search_terms: str = SKIPPED_SEARCH_TERMS,
     exact: bool = False,
 ) -> str:
     """Build the inbox search for a sync.
@@ -123,7 +123,8 @@ def search_query(
     The search starts at the newest processed message when it is later than the sync start,
     since earlier messages were processed oldest first. Gmail's date operators do not use the
     sync start's time zone, so the date starts one day early; selection applies the exact start.
-    The skip filter's Gmail categories, or the caller's own terms, are left out of the search.
+    The skip filter's Gmail categories are left out of the search, unless the caller passes
+    its own terms instead.
     With `exact`, the search starts a second before the start in epoch seconds, which Gmail
     applies exactly, instead.
     """
@@ -136,4 +137,4 @@ def search_query(
         after = str(int(start.timestamp()) - 1)
     else:
         after = f"{(start.astimezone(received_since.tzinfo) - timedelta(days=1)).date():%Y/%m/%d}"
-    return " ".join(term for term in ("in:inbox", skipped_terms, f"after:{after}") if term)
+    return " ".join(term for term in ("in:inbox", search_terms, f"after:{after}") if term)
