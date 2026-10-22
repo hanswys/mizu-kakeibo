@@ -390,6 +390,26 @@ class _Tracker:
             self.refresh(application_id, status)
 
 
+def read_counts(database_path: Path) -> tuple[int, int]:
+    """Count the applications and the unresolved review items, writing nothing.
+
+    The database is opened read-only, so a missing one is never created, and without the run
+    lock: in WAL mode a reader sees the last commit and never waits for a run.
+    """
+    uri = f"{Path(database_path).resolve().as_uri()}?mode=ro"
+    connection = sqlite3.connect(uri, uri=True, timeout=30)
+    try:
+        applications = connection.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
+        review = connection.execute(
+            "SELECT COUNT(*) FROM review_items ri JOIN analyses a ON a.id = ri.analysis_id "
+            "LEFT JOIN resolutions r ON r.review_item_id = ri.id "
+            "WHERE a.active = 1 AND r.id IS NULL"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+    return applications, review
+
+
 class JobStore:
     def __init__(self, database_path: Path) -> None:
         self.database_path = Path(database_path)

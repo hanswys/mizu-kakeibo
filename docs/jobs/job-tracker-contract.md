@@ -1,6 +1,6 @@
 # Job Tracker Contract
 
-**Status:** Version 0 contract agreed on 2026-10-17 (J0-2); the commands, terminal review, and run result added on 2026-10-18 (J0.5-1); Gmail API retrieval and `jobs-sync` added on 2026-10-22 (J0.5-2); the sampled layouts are from J0-1. Implementation status is tracked in [the roadmap](ROADMAP.md).
+**Status:** Version 0 contract agreed on 2026-10-17 (J0-2); the commands, terminal review, and run result added on 2026-10-18 (J0.5-1); Gmail API retrieval and `jobs-sync` added on 2026-10-22 (J0.5-2); the counts in the expense `status` added on 2026-10-23; the sampled layouts are from J0-1. Implementation status is tracked in [the roadmap](ROADMAP.md).
 **Contract version:** `jobs-v0`
 
 This document is the source of truth for the job tracker's retrieval, analyser input and output, normalization of company names and job titles, matching, status update, review, persistence, and evaluation rules. Product scope belongs in the [MVP](MVP.md). The shared Gmail adapter and `inbox-message/v0` envelope are defined in the [expense contract](../expenses/inbox-expense-contract.md) and are referenced, not copied.
@@ -284,6 +284,8 @@ The list is in the run's local result only; it changes nothing and is not stored
 ### Application list
 
 `jobs-list` prints the applications, newest latest update first and then by ID, with their latest update date, current status, company, and job title as first written. It also counts the applications and the unresolved review items.
+
+The expense app's `status` shows the same two counts, read without the run lock from a database it opens read-only and never creates, as its contract's [`status`](../expenses/inbox-expense-contract.md#10-spending-summaries) describes.
 
 ## 10. Persistence
 

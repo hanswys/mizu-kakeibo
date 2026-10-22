@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from collections.abc import Callable, Sequence
 from datetime import date, datetime
@@ -30,7 +31,7 @@ from .jobs.evaluation import load_dataset as load_jobs_dataset
 from .jobs.processor import JobProcessingResult, JobProcessor, parse_job_message, run_report
 from .jobs.review import application_list
 from .jobs.review import review as review_jobs
-from .jobs.storage import JOBS_LIVE_DATABASE, JobReviewError, JobStore
+from .jobs.storage import JOBS_LIVE_DATABASE, JobReviewError, JobStore, read_counts
 from .models import AnalysisDecision, InboxMessage, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
 from .ollama import AnalysisError, OllamaAnalyser
@@ -47,7 +48,7 @@ from .scheduled import (
     write_review_script,
 )
 from .selection import search_query, select_new_messages
-from .spending import last_sync, parse_period, render_spending, render_status
+from .spending import job_counts, last_sync, parse_period, render_spending, render_status
 from .storage import (
     LIVE_DATABASE,
     LIVE_LEDGER,
@@ -94,6 +95,16 @@ def _today() -> date:
     return datetime.now(MALAYSIA).date()
 
 
+def _jobs_row(database: Path) -> str | None:
+    """The job tracker's `status` row, or None before its first run has created a database."""
+    if not database.is_file():
+        return None
+    try:
+        return job_counts(*read_counts(database))
+    except sqlite3.Error:
+        return "could not read the job database"
+
+
 def command_status(args: argparse.Namespace) -> int:
     store = _existing_store(args)
     today = _today()
@@ -106,6 +117,7 @@ def command_status(args: argparse.Namespace) -> int:
             len(store.list_review_items()),
             last_sync(args.database.parent / "scheduled.log"),
             update_commands(),
+            _jobs_row(args.jobs_database),
         )
     )
     return 0
@@ -606,6 +618,7 @@ def build_parser() -> argparse.ArgumentParser:
         "status", help="show spending today, this week, and this month, and what needs review"
     )
     _add_storage_options(status)
+    status.add_argument("--jobs-database", type=Path, default=JOBS_LIVE_DATABASE)
     status.set_defaults(handler=command_status)
 
     spend = subparsers.add_parser(

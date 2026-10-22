@@ -1,0 +1,112 @@
+# Job Tracker User Guide
+
+How to use the job-application tracker day to day. It is part of the same `mizu-kakeibo` command as the expense app, and shares its installation, Ollama, and Gmail sign-in, described in the [expense user guide](../expenses/USER-GUIDE.md) and the [README](../../README.md). What the tracker does and why is in the [MVP](MVP.md); exact behaviour is in the [contract](job-tracker-contract.md).
+
+## What it does for you
+
+When you run a sync, the tracker reads your Gmail inbox messages received since 8 Oct 2026 and finds the ones that report the status of a job application: submitted, viewed, an interview, a rejection, or an offer. It keeps one application for each company and job title, with its current status. Emails it is unsure about, or that look like an application it already has under a slightly different name, wait for you in a review list. Job alerts, recommendations, and other mail change nothing.
+
+Nothing runs by itself. The tracker syncs only when you start it, and it never shows a notification or dialog.
+
+Everything stays on the laptop, in `~/mizu-kakeibo-private/jobs/live/job-tracker.sqlite3`. The first sync creates it. It is separate from the expense ledger: the two apps read the same inbox but keep their own records, so one email can be both an expense and a job update.
+
+## Syncing
+
+Run:
+
+```sh
+mizu-kakeibo jobs-sync
+```
+
+It reads up to 25 new messages, oldest first; add `--limit 50` for more in one run. It uses the expense app's read-only Gmail sign-in, so if `mizu-kakeibo sync` works, so does this.
+
+The first syncs work through a backlog of the emails since 8 Oct 2026. Each run handles the oldest 25 and leaves the rest for later, listed as `deferred`. Run it again until nothing is deferred; after that, a sync handles only new emails and any that failed before.
+
+It prints its result as JSON:
+
+| Field | Means |
+| --- | --- |
+| `summary.status_update` | Emails that updated an application |
+| `summary.not_application` | Emails that report no application status |
+| `summary.review` | Emails waiting for you in [review](#reviewing-an-email) |
+| `summary.failed` | Emails that could not be read or analysed; the next sync tries them again, and after three failures one goes to review |
+| `summary.deferred` | New emails left for the next sync |
+| `summary.skipped` | Emails already recorded by the time this sync stored them; nothing to do |
+| `already_processed` | How many emails earlier syncs already handled |
+| `applications` | How many applications this sync created, advanced, reopened, or left unchanged |
+| `skim` | Job-related emails decided as not an application, by sender and subject |
+
+Glance at `skim` after each sync. It lists emails from LinkedIn, Jobstreet, and hiring systems, or with an application or interview in the subject, that the tracker decided report no status. Those are not reviewed, so a missed update would otherwise go unnoticed. If one is a real status update, ask Claude Code in this repository to re-evaluate it.
+
+Only one job sync runs at a time; another one started meanwhile prints `locked` and does nothing. A job sync and the hourly expense sync can run at once.
+
+## Checking your applications
+
+Once the first sync has run, `mizu-kakeibo` on its own adds a `Jobs` line under the expense summary, and the job commands under the expense ones:
+
+```text
+  Last sync   Fri 23 Oct 14:00 · 1 expense, 0 to review, 0 failed
+  Jobs        2 applications · 1 to review
+```
+
+To see the applications, run `mizu-kakeibo jobs-list`. The most recently updated come first:
+
+```text
+2 applications
+
+      Updated     Status     Company         Job title
+  #2  2026-10-12  interview  Orchid Harbour  Product Designer
+  #1  2026-10-09  applied    Lumen Works     Backend Engineer
+
+1 message to review: run mizu-kakeibo jobs-review
+```
+
+The company and job title are shown as first written. A status only moves forward, from applied to viewed to interview to offered or rejected, so a late or repeated email does not move an application back. Applying again after a rejection reopens it as applied.
+
+## Reviewing an email
+
+Run `mizu-kakeibo jobs-review`. It lists the waiting emails, numbered, with why each one waits:
+
+```text
+2 messages to review
+
+  1  Sat 10 Oct  Orchid Harbour Group  Interview for Product Designer  likely match
+  2  Tue 13 Oct  Example Careers       Thanks for applying             missing company, job title
+
+Number to review, or q to quit:
+```
+
+| Why | Means |
+| --- | --- |
+| `missing ...` | The email lacks the company, job title, or status, or the analyser could not read it safely |
+| `likely match` | It looks like an application you already have, under a slightly different company name or job title |
+| `contradicts the outcome` | It reports an offer for a rejected application, or a rejection for an offered one |
+
+Type a number to see that email: its sender, subject, received time, what the tracker extracted, any application it suggests, and its first 15 lines. Then press a key and Enter:
+
+| Key | Does |
+| --- | --- |
+| `a` | Accepts the suggestion: attaches the email to the suggested application. Only offered when there is one. |
+| `e` | Lets you type the company, job title, and status, and matches them to an application or creates one. If they only look like an application you have, nothing is saved and it suggests `t` or `c`. |
+| `t` | Attaches it to another application, picked by number from your list |
+| `c` | Creates a new application from a company, job title, and status you type |
+| `n` | It is not an application |
+| `m` | Shows the whole email; press `q` to come back |
+| `g` | Opens the email in Gmail |
+| `s` | Skips it for now |
+| `q` | Quits |
+
+When asked for a value, press Enter to take the one in brackets. A status can be typed whole or by its first letter, such as `i` for interview. Nothing is saved until you answer `y` to `Save?`, because a resolved email cannot go back to review. Quitting, `Ctrl-C`, or closing the window saves nothing for the email on screen.
+
+When you attach an email whose company or job title is written differently, such as `Orchid Harbour Group` for `Orchid Harbour`, the tracker remembers that name for the application, so later emails written the same way match it without review.
+
+## When something goes wrong
+
+| You see | What to do |
+| --- | --- |
+| The Gmail sign-in has expired or was removed | Run `mizu-kakeibo gmail-sign-in --replace` and approve read-only access in the browser. The sign-in is shared, so this fixes the expense sync too. |
+| An error about Ollama | Check that Ollama is running, as for the expense app; see the [README](../../README.md#setup) |
+| `no job-tracker database` from `jobs-list` or `jobs-review` | Run `mizu-kakeibo jobs-sync` first; the first sync creates it |
+| `Jobs  could not read the job database` in the summary | Run `mizu-kakeibo` again. If it stays, ask Claude Code in this repository to investigate. |
+
+Keep `~/mizu-kakeibo-private/` backed up if your application history matters to you; it is never committed to the repository.

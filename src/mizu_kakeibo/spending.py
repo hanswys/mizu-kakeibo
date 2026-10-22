@@ -23,6 +23,12 @@ _EVERYDAY_COMMANDS = (
     ("mizu-kakeibo gmail-sign-in", "sign in to Gmail again, read-only"),
 )
 
+_JOB_COMMANDS = (
+    ("mizu-kakeibo jobs-sync", "read new job-application emails now"),
+    ("mizu-kakeibo jobs-review", "resolve the job emails waiting for review"),
+    ("mizu-kakeibo jobs-list", "every job application with its current status"),
+)
+
 _FAILED_STAGES = {
     "sign_in": "the Gmail sign-in",
     "runtime": "the analyser (Ollama)",
@@ -210,14 +216,23 @@ def last_sync(log: Path) -> str | None:
     return None
 
 
+def job_counts(applications: int, review_count: int) -> str:
+    """Describe the job tracker's applications and review items for the `Jobs` row."""
+    return f"{applications} application{'s' * (applications != 1)} · {review_count} to review"
+
+
 def render_status(
     today: date,
     entries: Sequence[LedgerEntry],
     review_count: int,
     sync: str | None,
     update: Sequence[str] | None = None,
+    jobs: str | None = None,
 ) -> str:
-    """Summarize today, this week, and this month from the month's and week's entries."""
+    """Summarize today, this week, and this month from the month's and week's entries.
+
+    `jobs` is the job tracker's row, given only when it has a database; its commands follow.
+    """
     week = parse_period("week", today)
     month = parse_period("month", today)
 
@@ -232,12 +247,14 @@ def render_status(
         ("To review", review),
         ("Last sync", sync or "none recorded"),
     ]
+    if jobs is not None:
+        rows.append(("Jobs", jobs))
     lines = [f"Mizu Kakeibo · {_day(today)}", ""]
     lines.extend(f"  {name:<11} {value}" for name, value in rows)
     if update:
         lines.extend(["", "  A newer version is on main. To update, run:"])
         lines.extend(f"    {command}" for command in update)
-    width = max(len(command) for command, _ in _EVERYDAY_COMMANDS)
+    width = max(len(command) for command, _ in _EVERYDAY_COMMANDS + _JOB_COMMANDS)
     lines.append("")
     lines.extend(f"  {command:<{width}}  {meaning}" for command, meaning in _EVERYDAY_COMMANDS)
     others = [name for name in PERIOD_NAMES if name != "month"]
@@ -248,4 +265,7 @@ def render_status(
             f"  or a date as {today:%Y-%m-%d}, {today:%Y-%m}, or {today:%Y}",
         ]
     )
+    if jobs is not None:
+        lines.append("")
+        lines.extend(f"  {command:<{width}}  {meaning}" for command, meaning in _JOB_COMMANDS)
     return "\n".join(lines) + "\n"

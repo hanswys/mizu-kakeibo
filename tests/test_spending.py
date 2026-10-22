@@ -3,9 +3,12 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from jobs_fakes import ScriptedOllama, message, other, update
 
 from mizu_kakeibo import cli
 from mizu_kakeibo.constants import ANALYSIS_OUTPUT_CONTRACT
+from mizu_kakeibo.jobs.processor import JobProcessor
+from mizu_kakeibo.jobs.storage import JobStore, ResolutionAction, read_counts
 from mizu_kakeibo.models import (
     AnalysisDecision,
     ExpenseAnalysisOutput,
@@ -16,6 +19,7 @@ from mizu_kakeibo.models import (
 from mizu_kakeibo.ollama import RuntimeMetadata
 from mizu_kakeibo.spending import (
     format_money,
+    job_counts,
     last_sync,
     parse_period,
     render_spending,
@@ -169,6 +173,21 @@ def test_status_totals_today_week_and_month() -> None:
     ]
     assert lines[-2].startswith("  Instead of month: today, yesterday, week, last-week,")
     assert lines[-1] == "  or a date as 2026-10-18, 2026-10, or 2026"
+    assert not any("Jobs" in line or "jobs-" in line for line in lines)
+
+
+def test_status_adds_the_job_row_and_commands_when_given() -> None:
+    plain = render_status(TODAY, [], 0, None)
+    lines = render_status(TODAY, [], 0, None, jobs=job_counts(12, 2)).splitlines()
+    assert lines[7] == "  Jobs        12 applications · 2 to review"
+    assert "\n".join(lines[:7] + lines[8:-4]) + "\n" == plain
+    assert lines[-4:] == [
+        "",
+        "  mizu-kakeibo jobs-sync                  read new job-application emails now",
+        "  mizu-kakeibo jobs-review                resolve the job emails waiting for review",
+        "  mizu-kakeibo jobs-list                  every job application with its current status",
+    ]
+    assert job_counts(1, 0) == "1 application · 0 to review"
 
 
 def test_status_shows_the_update_commands_when_given() -> None:
@@ -244,3 +263,56 @@ def test_reading_commands_do_not_create_a_missing_database(private_live_paths, c
             cli.main(command)
         assert "no database at" in capsys.readouterr().err
     assert not private_live_paths.exists()
+
+
+def job_database(path) -> JobStore:
+    """A synthetic job tracker with two applications and one of two review items resolved."""
+    applied = message("b1", 1, "Orchid Harbour: Product Designer received")
+    lumen = message("b2", 2, "Lumen Works: Backend Engineer received")
+    unclear = message("b3", 3, "Thanks for applying")
+    alert = message("b4", 4, "Jobs you may like")
+    answers = {
+        applied.subject: update("Orchid Harbour", "Product Designer", "applied"),
+        lumen.subject: update("Lumen Works", "Backend Engineer", "applied"),
+        unclear.subject: other("needs_review", ["company"], "The company is missing"),
+        alert.subject: other("needs_review", ["job_title"], "The job title is missing"),
+    }
+    store = JobStore(path)
+    with ScriptedOllama(answers).analyser() as analyser:
+        JobProcessor(store, analyser).process_batch([applied, lumen, unclear, alert])
+    store.resolve_review(store.list_review_items()[-1].id, ResolutionAction.NOT_APPLICATION)
+    return store
+
+
+def test_job_counts_read_a_read_only_database_without_its_lock(tmp_path, hold_run_lock) -> None:
+    database = tmp_path / "job-tracker.sqlite3"
+    store = job_database(database)
+    hold_run_lock(database)
+    database.chmod(0o400)
+
+    assert read_counts(database) == (len(store.list_applications()), 1) == (2, 1)
+    assert len(store.list_review_items()) == 1
+
+
+def test_bare_command_shows_the_job_row_once_the_job_database_exists(
+    private_live_paths, inbox_message, monkeypatch, capsys
+) -> None:
+    Store(private_live_paths / "kakeibo.sqlite3", private_live_paths / "ledger.csv")
+    monkeypatch.setattr(cli, "_today", lambda: TODAY)
+    assert cli.main([]) == 0
+    expense_only = capsys.readouterr().out
+    assert "Jobs" not in expense_only and "jobs-" not in expense_only
+    assert not cli.JOBS_LIVE_DATABASE.exists()
+
+    job_database(cli.JOBS_LIVE_DATABASE)
+    assert cli.main([]) == 0
+    output = capsys.readouterr().out
+    row = "  Jobs        2 applications · 1 to review\n"
+    assert "  Last sync   none recorded\n" + row in output
+    rows, _, commands = output.replace(row, "").partition("\n\n  mizu-kakeibo jobs-sync")
+    assert rows + "\n" == expense_only
+    assert "  mizu-kakeibo jobs-review " in commands
+
+    cli.JOBS_LIVE_DATABASE.write_bytes(b"not a database")
+    assert cli.main([]) == 0
+    assert "  Jobs        could not read the job database\n" in capsys.readouterr().out
