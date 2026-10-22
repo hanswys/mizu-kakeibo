@@ -1,6 +1,6 @@
 # Job Tracker Contract
 
-**Status:** Version 0 contract agreed on 2026-10-17 (J0-2); the commands, terminal review, and run result added on 2026-10-18 (J0.5-1); the sampled layouts are from J0-1. Implementation status is tracked in [the roadmap](ROADMAP.md).
+**Status:** Version 0 contract agreed on 2026-10-17 (J0-2); the commands, terminal review, and run result added on 2026-10-18 (J0.5-1); Gmail API retrieval and `jobs-sync` added on 2026-10-22 (J0.5-2); the sampled layouts are from J0-1. Implementation status is tracked in [the roadmap](ROADMAP.md).
 **Contract version:** `jobs-v0`
 
 This document is the source of truth for the job tracker's retrieval, analyser input and output, normalization of company names and job titles, matching, status update, review, persistence, and evaluation rules. Product scope belongs in the [MVP](MVP.md). The shared Gmail adapter and `inbox-message/v0` envelope are defined in the [expense contract](../expenses/inbox-expense-contract.md) and are referenced, not copied.
@@ -10,7 +10,7 @@ No real email content, names, or identifiers belong in this document. Company na
 ## End-to-end contract
 
 ```text
-Search inbox message IDs received on or after 2026-04-14
+Search inbox message IDs received on or after 2026-10-08
   -> Skip an ID already processed by the job tracker
   -> Read the full Gmail message
   -> Normalize it into an inbox-message envelope, preferring HTML
@@ -32,14 +32,15 @@ The analyser reads one email and fills in a fixed structured result. Normalizati
 
 ## 1. Inbox retrieval
 
-The job tracker retrieves Gmail messages through the same adapter as the expense app: the claude.ai Gmail connector in an agent-driven sync, as described in the expense contract's [connector sync](../expenses/inbox-expense-contract.md#connector-sync), and later the [Gmail API](../expenses/inbox-expense-contract.md#gmail-api-retrieval) with the shared read-only sign-in. Only the search, the selection rules, and the processed-message store differ:
+`jobs-sync` reads Gmail through the expense app's [Gmail API retrieval](../expenses/inbox-expense-contract.md#gmail-api-retrieval), with its shared read-only sign-in, token use, `raw` fetch, and retrieval errors, including a rate limit, which fails as in the expense sync, as the user chose on 2026-10-22. No agent or Gmail connector takes part. Only the search, the metadata requests, the selection rules, and the processed-message store differ:
 
-- **Search.** All inbox messages: `in:inbox after:2026/04/13`, or from the newest processed message's received time when that is later. There is no skip filter, no sender filter, and no Gmail category exclusion. As in the expense sync, Gmail's date operators do not use Malaysia time, so the query's date is one day earlier and selection applies the exact start, and a sync after one with failures searches from the start again.
-- **Select.** A message is eligible when it has the `INBOX` label and an `internalDate` on or after `2026-04-14T00:00:00+08:00`; anything earlier is never processed. Eligible IDs are ordered oldest first and checked against the job tracker's own processed-message store, never the expense store. At most 25 new IDs are selected per run; the rest are reported as deferred.
-- **Fetch.** Each selected ID is fetched in `RAW` format and converted as the expense contract's [connector section](../expenses/inbox-expense-contract.md#claudeai-gmail-connector) defines.
+- **Search.** All inbox messages since the start, on every run: `in:inbox after:<seconds>`, where the seconds are the epoch time one second before `2026-10-08T00:00:00+08:00`. Gmail applies an epoch-second date exactly, so unlike the expense sync's date search there is no extra day of earlier messages. There is no skip filter, no sender filter, and no Gmail category exclusion. Unlike the expense sync, the search never starts at the newest processed message, so a message that failed in an earlier run, for any reason, is found again without a `--full` search. Listing costs one request per 500 IDs.
+- **Metadata.** IDs the search returns that the job tracker has already processed are not requested; they are counted as already processed. When at most the batch limit of new IDs remains, each is requested in `metadata` format, as in the expense sync. While more remain, as during the backlog, only the new IDs in the oldest window that holds the batch are requested: the sync lists `in:inbox after:<seconds> before:<seconds>` from the start to one day after the newest processed message, or after the start, and doubles that distance until the window holds at least the batch limit of new IDs or reaches the present. Every new ID outside the window is newer than every one inside it, so selection stays oldest first. A run's metadata requests therefore grow with its batch, not with the backlog or the inbox.
+- **Select.** A message is eligible when it has the `INBOX` label and an `internalDate` on or after `2026-10-08T00:00:00+08:00`; anything earlier is never processed. Eligible IDs are ordered oldest first and checked against the job tracker's own processed-message store, never the expense store. At most 25 new IDs are selected per run, or the number `--limit` sets; the rest are reported as deferred. New IDs outside the window are deferred without metadata, ordered by the search, which lists newest first.
+- **Fetch.** Each selected ID is fetched in `raw` format and converted as the expense contract's [connector section](../expenses/inbox-expense-contract.md#claudeai-gmail-connector) defines.
 - **Normalize.** The envelope is built by the shared normalizer with its option to prefer the HTML alternative turned on. The option is defined in the expense contract's [normalization rules](../expenses/inbox-expense-contract.md#2-normalized-inbox-message-envelope); the expense app leaves it off. Without it, LinkedIn viewed and rejected envelopes lack the job title or the rejection wording (see [MIME structure](#mime-structure)).
 
-The selection and collection steps are shared Gmail ingest code. The job tracker passes its own start time, its own processed-message store, and no skip filter; the expense app's behavior is unchanged.
+The search, selection, and fetch steps are shared Gmail ingest code. The job tracker passes its own start time, its own processed-message store, no skip filter, and the option for an exact start with metadata only for the new IDs a run can select; the expense sync passes its skip filter and leaves the option off, so its behavior is unchanged.
 
 The pair `source.provider = gmail` and `source.message_id` is the job tracker's idempotency key, as in the expense app. The two apps track processing separately, so one message may be processed by both.
 
@@ -257,6 +258,8 @@ A resolution is recorded separately and never modifies the analysis, so the Gmai
 
 `jobs-process` takes a JSON file holding one message or an array of them, each a connector `RAW` response, a Gmail full-message response, or an `inbox-message/v0` envelope. Responses are normalized preferring HTML, as [inbox retrieval](#1-inbox-retrieval) requires; a response that cannot be normalized is a failure of that message alone. `--selection` takes a selection's JSON and reports its `already_processed_ids` as skipped and its `deferred_ids` as deferred. `--reevaluate` re-evaluates messages that are already processed, as [re-evaluation](#re-evaluation) describes.
 
+`jobs-sync` runs one sync by hand; the MVP has no scheduled run. It takes the run lock, reads the shared sign-in without ever opening a browser, checks the analyser runtime, and then searches, selects, and fetches as [inbox retrieval](#1-inbox-retrieval) describes, before processing the fetched messages oldest first. A sign-in that is missing or refused stops the sync, as in the expense app, and records nothing. A message whose fetch or normalization fails is reported as `failed` and stays retryable. `jobs-sync` prints the same report as `jobs-process --selection`, with two differences, because every run searches from the start: `skipped` lists only the IDs found already processed when their analysis was stored, and `already_processed` counts the IDs the search found already processed.
+
 The job tracker follows the expense contract's [processing rules](../expenses/inbox-expense-contract.md#6-processing-failure-and-idempotency) on its own database:
 
 - The Gmail message ID is checked before retrieval and before a model call; a replay of a processed ID changes nothing.
@@ -264,7 +267,7 @@ The job tracker follows the expense contract's [processing rules](../expenses/in
 - A run takes an exclusive lock on `<database>.lock`. The job tracker's lock is separate from the expense app's, so both apps may run at once; Ollama serves their requests in turn from the one loaded model.
 - A message whose own analysis fails three times is stored as `needs_review` with the reason `Analysis failed repeatedly` and `message_content` missing.
 
-A run reports its message IDs in six groups: `status_update` for status updates linked to an application, `not_application`, `review` for `needs_review` decisions and status updates sent to review, `skipped`, `failed`, and `deferred`. It also counts applications created, advanced, reopened, and unchanged, by the effect of each link the run made. A run where any message failed exits with status 1. While another run holds the lock, `jobs-process` records nothing and reports `locked`.
+A run reports its message IDs in six groups: `status_update` for status updates linked to an application, `not_application`, `review` for `needs_review` decisions and status updates sent to review, `skipped`, `failed`, and `deferred`. It also counts applications created, advanced, reopened, and unchanged, by the effect of each link the run made. A run where any message failed exits with status 1. While another run holds the lock, `jobs-process` and `jobs-sync` record nothing and report `locked`.
 
 The model's reason is sanitized before it is stored, as in the expense app: control characters, email addresses, URLs, and long digit runs are removed, and so are the sender, the subject, and the extracted company and job title. A reason that quotes four consecutive words of the message, at least 16 characters together, is replaced by a fixed one. The fixed reasons above are stored unchanged.
 
@@ -449,7 +452,7 @@ Other LinkedIn senders seen carried no application status: `invitations@`, `grou
 ### Observed sequences
 
 - LinkedIn: applied, then rejected 3 days later (several); applied, then viewed (four, one within 4 hours).
-- LinkedIn: viewed or rejected for roles applied for before 2026-04-14, with no applied email in the window.
+- LinkedIn: viewed or rejected for roles applied for before the sample's start, 2026-04-14, with no applied email in the window. Updates for roles applied for before the tracker's start, 2026-10-08, arrive the same way and create an application, as [matching](#6-matching) describes.
 - LinkedIn then employer: applied, viewed, then an employer interview invitation the next day.
 - Three different roles at one company on LinkedIn; two different roles at one company on Jobstreet on the same day.
 - Jobstreet: submitted, viewed, rejected; submitted, viewed, closed, then a digest showing `Reviewing applications`.

@@ -420,6 +420,33 @@ class JobStore:
             ).fetchone()
         return row is not None
 
+    def filter_new_ids(self, provider: str, message_ids: list[str]) -> list[str]:
+        """Return the IDs not yet processed by the job tracker, in order and without repeats."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT message_id FROM analyses WHERE provider = ? AND active = 1", (provider,)
+            ).fetchall()
+        processed = {row["message_id"] for row in rows}
+        return [
+            message_id for message_id in dict.fromkeys(message_ids) if message_id not in processed
+        ]
+
+    def latest_received_at(self, provider: str) -> datetime | None:
+        """Return the newest received time among actively processed messages."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT json_extract(m.envelope_json, '$.received_at') AS received_at "
+                "FROM messages m JOIN analyses a "
+                "ON a.provider = m.provider AND a.message_id = m.message_id "
+                "WHERE m.provider = ? AND a.active = 1",
+                (provider,),
+            ).fetchall()
+        # Read only the received time, not every stored envelope's text.
+        received = [
+            datetime.fromisoformat(row["received_at"].replace("Z", "+00:00")) for row in rows
+        ]
+        return max(received, default=None)
+
     def record_failure(self, provider: str, message_id: str) -> int:
         """Count a failed analysis of the message's own and return its failure count."""
         with self.connect() as connection:
