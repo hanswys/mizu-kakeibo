@@ -1,6 +1,6 @@
 # Mizu Kakeibo User Guide
 
-How to use Mizu Kakeibo day to day once it is installed. Installation and every command's options are in the [README](../../README.md); what the app does and why is in the [MVP](MVP.md); exact behaviour is in the [contract](inbox-expense-contract.md#9-scheduled-run).
+How to use Mizu Kakeibo day to day once it is installed. Installation and every command's options are in the [README](../../README.md); what the app does and why is in the [MVP](MVP.md); exact behaviour is in the [contract](inbox-expense-contract.md#9-scheduled-run). The job-application tracker, which reads the same inbox, has its own [guide](../jobs/USER-GUIDE.md).
 
 ## What it does for you
 
@@ -37,6 +37,8 @@ Mizu Kakeibo · Sun 18 Oct 2026
   To review   nothing
   Last sync   Sun 18 Oct 01:38 · 1 expense, 0 to review, 0 failed
 ```
+
+Once the job tracker has synced, a `Jobs` line follows with its applications and the job emails waiting for review, and its commands are listed after the expense ones; see the [job tracker guide](../jobs/USER-GUIDE.md#checking-your-applications).
 
 To see the expenses behind a total, use `mizu-kakeibo spend` with a period. Add `--by merchant` to total each merchant instead. Without `--by merchant`, the list is numbered so you can [fix an expense](#fixing-a-logged-expense).
 

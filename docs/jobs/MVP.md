@@ -142,6 +142,7 @@ Review runs in the terminal, like the [expense review](../expenses/MVP.md#review
 ### Application list
 
 - Show every application in the terminal with its company, job title, current status, and the date of its latest update.
+- Once the first sync has created the database, the expense app's [spending summary](../expenses/MVP.md#spending-summaries) also counts the applications and the emails waiting for review, and lists the job commands, as the user chose on 2026-10-22. Reading the counts changes nothing and does not wait for a sync. Day-to-day use is described in the [user guide](USER-GUIDE.md).
 
 ### Run result
 

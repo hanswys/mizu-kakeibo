@@ -139,6 +139,7 @@ The user asked on 2026-10-18, after Version 1, for a quick way to see what they 
 - Commands use the live database and ledger unless told otherwise, so everyday use needs no file paths.
 - When changes have been merged to `main` since the installed copy was built, the summary says so and shows the commands to update it. The user asked for this on 2026-10-21, so updating does not depend on remembering it after each merge. Nothing updates itself.
 - A summary covers what the latest sync has logged; mail that arrived since is not included until the next sync.
+- Once the [job tracker](../jobs/MVP.md) has a database, the summary also shows how many job applications it tracks and how many of its emails wait for review, with its commands, so one command shows both apps. This is the first surface the two projects share, chosen by the user on 2026-10-22 as a step toward combining them. Reading the counts never changes the job tracker or waits for its sync, and without a job database the summary is unchanged.
 
 ## External payment applications
 
