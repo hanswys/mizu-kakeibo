@@ -246,6 +246,34 @@ def test_search_follows_page_tokens_and_drops_duplicates() -> None:
     ]
 
 
+def test_a_search_that_matches_nothing_returns_no_ids() -> None:
+    """With a `fields` mask, Gmail answers an empty search with 204 and no body."""
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.params["fields"])
+        return httpx.Response(204)
+
+    client = httpx.Client(base_url=GMAIL_API_BASE_URL, transport=httpx.MockTransport(handler))
+    with GmailApiClient(credentials(), client=client) as gmail:
+        assert gmail.list_message_ids("in:inbox after:2099/01/01") == []
+        with pytest.raises(GmailRetrievalError, match="metadata for another message"):
+            gmail.message_metadata("m1")
+        with pytest.raises(GmailRetrievalError, match="no raw content"):
+            gmail.raw_message("m1")
+    assert seen[0] == "messages/id,nextPageToken"
+
+
+def test_a_successful_response_that_is_not_json_is_a_retrieval_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"")
+
+    client = httpx.Client(base_url=GMAIL_API_BASE_URL, transport=httpx.MockTransport(handler))
+    gmail = GmailApiClient(credentials(), client=client)
+    with pytest.raises(GmailRetrievalError, match="invalid JSON"):
+        gmail.list_message_ids("in:inbox")
+
+
 def test_metadata_keeps_the_from_display_name_and_drops_the_snippet() -> None:
     fake = FakeGmail(
         [api_message("m1", "LinkedIn Job Alerts <jobalerts-noreply@linkedin.com>", "Jobs")]

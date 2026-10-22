@@ -170,6 +170,8 @@ class GmailApiClient:
             raise GmailSignInError(f"Gmail refused the sign-in; run `{SIGN_IN_COMMAND} --replace`")
         if response.is_error:
             raise GmailRetrievalError(f"Gmail API returned {_error_reason(response)}")
+        if response.status_code == 204:
+            return {}  # a search with a `fields` mask that matches nothing has no body
         try:
             value = response.json()
         except json.JSONDecodeError as error:
