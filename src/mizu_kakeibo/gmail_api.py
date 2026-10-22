@@ -267,7 +267,7 @@ def _oldest_new_ids(
     new_ids: list[str],
     *,
     received_since: datetime,
-    skipped_terms: str,
+    search_terms: str,
     limit: int,
     now: datetime,
 ) -> list[str]:
@@ -284,7 +284,7 @@ def _oldest_new_ids(
     while base + span < now:
         terms = (
             "in:inbox",
-            skipped_terms,
+            search_terms,
             f"after:{int(received_since.timestamp()) - 1}",
             f"before:{int((base + span).timestamp())}",
         )
@@ -307,13 +307,13 @@ def retrieve_new_messages(
     limit: int,
     full: bool = False,
     skip_filter: Callable[[dict[str, Any]], bool] | None = is_filtered,
-    skipped_terms: str = SKIPPED_SEARCH_TERMS,
+    search_terms: str = SKIPPED_SEARCH_TERMS,
     new_metadata_only: bool = False,
 ) -> Retrieval:
     """Search, select, and fetch new inbox messages as the connector sync does.
 
-    The defaults are the expense sync's. The job tracker passes no skip filter or skipped
-    search terms, and turns on `new_metadata_only`: the search starts at the exact start, IDs
+    The defaults are the expense sync's. The job tracker passes no skip filter, its job words
+    as the search terms, and turns on `new_metadata_only`: the search starts at the exact start, IDs
     already processed get no metadata request and are reported as already processed in search
     order, and while more new IDs remain than the limit, only those in the oldest window that
     holds the limit get one. The others are deferred, newest last, as search order suggests.
@@ -323,7 +323,7 @@ def retrieve_new_messages(
     """
     latest = None if full else store.latest_received_at("gmail")
     message_ids = gmail.list_message_ids(
-        search_query(received_since, latest, skipped_terms=skipped_terms, exact=new_metadata_only)
+        search_query(received_since, latest, search_terms=search_terms, exact=new_metadata_only)
     )
     known: list[str] = []
     later: list[str] = []
@@ -338,7 +338,7 @@ def retrieve_new_messages(
                 store,
                 new_ids,
                 received_since=received_since,
-                skipped_terms=skipped_terms,
+                search_terms=search_terms,
                 limit=limit,
                 now=datetime.now(timezone.utc),
             )
