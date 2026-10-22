@@ -13,12 +13,12 @@ from jobs_fakes import ScriptedOllama, other, update
 
 from mizu_kakeibo import cli, gmail_api
 from mizu_kakeibo.constants import GMAIL_API_BASE_URL, GMAIL_READONLY_SCOPE
-from mizu_kakeibo.gmail_api import GmailApiClient, GmailRetrievalError
+from mizu_kakeibo.gmail_api import GmailApiClient
+from mizu_kakeibo.jobs.constants import JOBS_RECEIVED_SINCE
 from mizu_kakeibo.jobs.storage import JobStore
 from mizu_kakeibo.selection import search_query, select_new_messages
 
-MALAYSIA = timezone(timedelta(hours=8))
-START = datetime(2026, 4, 14, tzinfo=MALAYSIA)
+START = datetime.fromisoformat(JOBS_RECEIVED_SINCE)
 LINKEDIN = "LinkedIn <jobs-noreply@linkedin.com>"
 CAREERS = "Example Careers <careers@example.invalid>"
 DIGEST = "Example Digest <digest@example.invalid>"
@@ -74,7 +74,7 @@ class FakeGmail:
     A search applies `in:inbox` and epoch-second `after:` and `before:` terms, and answers
     HTTP 204 with no body when nothing matches, as Gmail does under a `fields` mask.
     `refusals` maps `list`, `metadata:<id>`, or `raw:<id>` to the responses to send, one per
-    request, before answering normally; `refuse_always` holds keys that are always refused.
+    request, before answering normally.
     """
 
     def __init__(self, messages: list[dict], *, page_size: int = 2) -> None:
@@ -83,7 +83,6 @@ class FakeGmail:
         self.requests: list[str] = []
         self.queries: list[str] = []
         self.refusals: dict[str, list[httpx.Response]] = {}
-        self.refuse_always: dict[str, httpx.Response] = {}
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer access-token"
@@ -95,8 +94,6 @@ class FakeGmail:
         else:
             key = f"{params['format']}:{path.removeprefix('messages/')}"
         self.requests.append(key)
-        if key in self.refuse_always:
-            return self.refuse_always[key]
         if self.refusals.get(key):
             return self.refusals[key].pop(0)
         if key == "list":
@@ -149,10 +146,9 @@ def matches(query: str, message: dict) -> bool:
     return True
 
 
-def refusal(status: int = 429, reason: str = "rateLimitExceeded", retry_after=None):
-    headers = {} if retry_after is None else {"Retry-After": str(retry_after)}
+def refusal(status: int = 429, reason: str = "rateLimitExceeded"):
     body = {"error": {"code": status, "errors": [{"reason": reason}]}}
-    return httpx.Response(status, json=body, headers=headers)
+    return httpx.Response(status, json=body)
 
 
 def token(directory) -> None:
@@ -191,21 +187,18 @@ def jobs_sync(tmp_path, monkeypatch):
         ]
     )
     ollama = ScriptedOllama(ANSWERS)
-    sleeps: list[float] = []
     monkeypatch.setattr(cli, "OllamaJobAnalyser", ollama.analyser)
     monkeypatch.setattr(
         cli,
         "GmailApiClient",
-        lambda creds, **options: GmailApiClient(
-            creds, client=fake.client(), sleep=sleeps.append, **options
-        ),
+        lambda creds: GmailApiClient(creds, client=fake.client()),
     )
     directory = tmp_path / "gmail-api"
     token(directory)
     database = tmp_path / "jobs" / "job-tracker.sqlite3"
     argv = ["jobs-sync", "--gmail-directory", str(directory), "--database", str(database)]
     return SimpleNamespace(
-        fake=fake, ollama=ollama, sleeps=sleeps, argv=argv, database=database, directory=directory
+        fake=fake, ollama=ollama, argv=argv, database=database, directory=directory
     )
 
 
@@ -354,37 +347,21 @@ def test_a_message_that_cannot_be_normalized_fails_and_stays_retryable(jobs_sync
     assert report["summary"]["status_update"] == ["j2"]
 
 
-def test_rate_limited_requests_are_retried_after_backing_off(jobs_sync, capsys) -> None:
-    jobs_sync.fake.refusals["list"] = [refusal(retry_after=3)]
-    jobs_sync.fake.refusals["metadata:j2"] = [
-        refusal(403, "userRateLimitExceeded"),
-        refusal(403, "rateLimitExceeded"),
-    ]
-    jobs_sync.fake.refusals["raw:j3"] = [refusal(retry_after=600)]
-
-    code, report = run(jobs_sync, capsys)
-
-    assert code == 0
-    assert report["summary"]["status_update"] == ["j1", "j2"]
-    assert report["summary"]["not_application"] == ["j3"]
-    assert jobs_sync.sleeps == [3.0, 2.0, 4.0, 64.0]
-
-
-def test_a_metadata_request_refused_past_the_retries_records_nothing(jobs_sync, capsys) -> None:
-    jobs_sync.fake.refuse_always["metadata:j2"] = refusal()
+def test_a_rate_limited_metadata_request_ends_the_run_and_records_nothing(
+    jobs_sync, capsys
+) -> None:
+    jobs_sync.fake.refusals["metadata:j2"] = [refusal()]
     with pytest.raises(SystemExit) as stopped:
         cli.main(jobs_sync.argv)
     assert stopped.value.code == 2
     assert "HTTP 429 rateLimitExceeded" in capsys.readouterr().err
-    assert jobs_sync.sleeps == [2.0, 4.0, 8.0, 16.0, 32.0, 64.0]
-    assert jobs_sync.fake.of("metadata").count("j2") == 7
     assert jobs_sync.fake.of("raw") == []
     assert jobs_sync.ollama.calls == []
     assert JobStore(jobs_sync.database).filter_new_ids("gmail", ["j1", "j3"]) == ["j1", "j3"]
 
 
-def test_a_fetch_refused_past_the_retries_fails_that_message_alone(jobs_sync, capsys) -> None:
-    jobs_sync.fake.refuse_always["raw:j1"] = refusal()
+def test_a_rate_limited_fetch_fails_that_message_alone(jobs_sync, capsys) -> None:
+    jobs_sync.fake.refusals["raw:j1"] = [refusal()]
     code, report = run(jobs_sync, capsys)
     assert code == 1
     assert report["summary"]["failed"] == ["j1"]
@@ -416,34 +393,6 @@ def test_a_missing_sign_in_stops_jobs_sync_before_gmail_or_the_runtime(jobs_sync
     assert not jobs_sync.database.exists()
 
 
-def test_a_forbidden_request_that_is_not_a_rate_limit_is_not_retried() -> None:
-    sleeps: list[float] = []
-    fake = FakeGmail([])
-    fake.refuse_always["list"] = refusal(403, "insufficientPermissions")
-    client = GmailApiClient(
-        SimpleNamespace(token="access-token"),
-        client=fake.client(),
-        rate_limit_waits=(2.0, 4.0),
-        sleep=sleeps.append,
-    )
-    with pytest.raises(GmailRetrievalError, match="HTTP 403 insufficientPermissions"):
-        client.list_message_ids("in:inbox")
-    assert sleeps == []
-    assert fake.requests == ["list"]
-
-
-def test_the_expense_client_does_not_retry_a_rate_limit() -> None:
-    sleeps: list[float] = []
-    fake = FakeGmail([])
-    fake.refusals["list"] = [refusal()]
-    client = GmailApiClient(
-        SimpleNamespace(token="access-token"), client=fake.client(), sleep=sleeps.append
-    )
-    with pytest.raises(GmailRetrievalError, match="HTTP 429"):
-        client.list_message_ids("in:inbox")
-    assert sleeps == []
-
-
 def test_selection_without_a_skip_filter_keeps_categories_and_job_senders() -> None:
     metadata = {
         "social": {"internalDate": str(at(1)), "labelIds": ["INBOX", "CATEGORY_SOCIAL"]},
@@ -459,9 +408,9 @@ def test_selection_without_a_skip_filter_keeps_categories_and_job_senders() -> N
 
 
 def test_the_search_leaves_out_no_categories_when_given_no_terms() -> None:
-    assert search_query(START, None, skipped_terms="") == "in:inbox after:2026/04/13"
+    assert search_query(START, None, skipped_terms="") == "in:inbox after:2026/10/07"
     assert search_query(START, None) == (
-        "in:inbox -category:promotions -category:social after:2026/04/13"
+        "in:inbox -category:promotions -category:social after:2026/10/07"
     )
 
 

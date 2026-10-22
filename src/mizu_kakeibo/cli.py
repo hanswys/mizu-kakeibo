@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from .constants import GMAIL_RATE_LIMIT_WAITS, SYNC_BATCH_LIMIT, SYNC_RECEIVED_SINCE
+from .constants import SYNC_BATCH_LIMIT, SYNC_RECEIVED_SINCE
 from .correction import correct_spending
 from .evaluation import evaluate, load_dataset
 from .gmail_api import (
@@ -442,8 +442,7 @@ def command_jobs_sync(args: argparse.Namespace) -> int:
         with run_lock(args.database):
             credentials = load_credentials(args.gmail_directory)
             store = JobStore(args.database)
-            client = GmailApiClient(credentials, rate_limit_waits=GMAIL_RATE_LIMIT_WAITS)
-            with client as gmail, OllamaJobAnalyser() as analyser:
+            with GmailApiClient(credentials) as gmail, OllamaJobAnalyser() as analyser:
                 analyser.verify_runtime()
                 retrieval = retrieve_new_messages(
                     gmail,

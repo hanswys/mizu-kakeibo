@@ -4,7 +4,7 @@ JOB_ANALYSIS_OUTPUT_CONTRACT = "job-analysis-output/v0"
 JOBS_PROMPT_VERSION = "jobs-v0.2"
 
 # The first-run start (MVP); every jobs-sync searches from it (contract §1).
-JOBS_RECEIVED_SINCE = "2026-04-14T00:00:00+08:00"
+JOBS_RECEIVED_SINCE = "2026-10-08T00:00:00+08:00"
 JOBS_SYNC_BATCH_LIMIT = 25
 
 GROUNDING_FAILURE_REASON = "Extracted value not found in message"

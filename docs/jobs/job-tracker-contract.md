@@ -10,7 +10,7 @@ No real email content, names, or identifiers belong in this document. Company na
 ## End-to-end contract
 
 ```text
-Search inbox message IDs received on or after 2026-04-14
+Search inbox message IDs received on or after 2026-10-08
   -> Skip an ID already processed by the job tracker
   -> Read the full Gmail message
   -> Normalize it into an inbox-message envelope, preferring HTML
@@ -32,16 +32,15 @@ The analyser reads one email and fills in a fixed structured result. Normalizati
 
 ## 1. Inbox retrieval
 
-`jobs-sync` reads Gmail through the expense app's [Gmail API retrieval](../expenses/inbox-expense-contract.md#gmail-api-retrieval), with its shared read-only sign-in, token use, `raw` fetch, and retrieval errors, as the user chose on 2026-10-22. No agent or Gmail connector takes part. Only the search, the metadata requests, the selection rules, the processed-message store, and rate-limit handling differ:
+`jobs-sync` reads Gmail through the expense app's [Gmail API retrieval](../expenses/inbox-expense-contract.md#gmail-api-retrieval), with its shared read-only sign-in, token use, `raw` fetch, and retrieval errors, including a rate limit, which fails as in the expense sync, as the user chose on 2026-10-22. No agent or Gmail connector takes part. Only the search, the metadata requests, the selection rules, and the processed-message store differ:
 
-- **Search.** All inbox messages since the start, on every run: `in:inbox after:<seconds>`, where the seconds are the epoch time one second before `2026-04-14T00:00:00+08:00`. Gmail applies an epoch-second date exactly, so unlike the expense sync's date search there is no extra day of earlier messages. There is no skip filter, no sender filter, and no Gmail category exclusion. Unlike the expense sync, the search never starts at the newest processed message, so a message that failed in an earlier run, for any reason, is found again without a `--full` search. Listing costs one request per 500 IDs.
+- **Search.** All inbox messages since the start, on every run: `in:inbox after:<seconds>`, where the seconds are the epoch time one second before `2026-10-08T00:00:00+08:00`. Gmail applies an epoch-second date exactly, so unlike the expense sync's date search there is no extra day of earlier messages. There is no skip filter, no sender filter, and no Gmail category exclusion. Unlike the expense sync, the search never starts at the newest processed message, so a message that failed in an earlier run, for any reason, is found again without a `--full` search. Listing costs one request per 500 IDs.
 - **Metadata.** IDs the search returns that the job tracker has already processed are not requested; they are counted as already processed. When at most the batch limit of new IDs remains, each is requested in `metadata` format, as in the expense sync. While more remain, as during the backlog, only the new IDs in the oldest window that holds the batch are requested: the sync lists `in:inbox after:<seconds> before:<seconds>` from the start to one day after the newest processed message, or after the start, and doubles that distance until the window holds at least the batch limit of new IDs or reaches the present. Every new ID outside the window is newer than every one inside it, so selection stays oldest first. A run's metadata requests therefore grow with its batch, not with the backlog or the inbox.
-- **Select.** A message is eligible when it has the `INBOX` label and an `internalDate` on or after `2026-04-14T00:00:00+08:00`; anything earlier is never processed. Eligible IDs are ordered oldest first and checked against the job tracker's own processed-message store, never the expense store. At most 25 new IDs are selected per run, or the number `--limit` sets; the rest are reported as deferred. New IDs outside the window are deferred without metadata, ordered by the search, which lists newest first.
+- **Select.** A message is eligible when it has the `INBOX` label and an `internalDate` on or after `2026-10-08T00:00:00+08:00`; anything earlier is never processed. Eligible IDs are ordered oldest first and checked against the job tracker's own processed-message store, never the expense store. At most 25 new IDs are selected per run, or the number `--limit` sets; the rest are reported as deferred. New IDs outside the window are deferred without metadata, ordered by the search, which lists newest first.
 - **Fetch.** Each selected ID is fetched in `raw` format and converted as the expense contract's [connector section](../expenses/inbox-expense-contract.md#claudeai-gmail-connector) defines.
 - **Normalize.** The envelope is built by the shared normalizer with its option to prefer the HTML alternative turned on. The option is defined in the expense contract's [normalization rules](../expenses/inbox-expense-contract.md#2-normalized-inbox-message-envelope); the expense app leaves it off. Without it, LinkedIn viewed and rejected envelopes lack the job title or the rejection wording (see [MIME structure](#mime-structure)).
-- **Rate limits.** A request refused with HTTP 429, or with HTTP 403 and the reason `rateLimitExceeded` or `userRateLimitExceeded`, is sent again up to six times. Before each retry the sync waits the response's `Retry-After` seconds, at most 64, or otherwise 2, 4, 8, 16, 32, and then 64 seconds. A request still refused after that is a Gmail retrieval error, with the expense sync's consequences: a failed search or metadata request ends the run before anything is fetched or recorded, and a failed fetch fails that message alone.
 
-The search, selection, and fetch steps are shared Gmail ingest code. The job tracker passes its own start time, its own processed-message store, no skip filter, and the options for an exact start with metadata only for the new IDs a run can select and for retrying rate limits; the expense sync passes its skip filter and leaves both options off, so its behavior is unchanged.
+The search, selection, and fetch steps are shared Gmail ingest code. The job tracker passes its own start time, its own processed-message store, no skip filter, and the option for an exact start with metadata only for the new IDs a run can select; the expense sync passes its skip filter and leaves the option off, so its behavior is unchanged.
 
 The pair `source.provider = gmail` and `source.message_id` is the job tracker's idempotency key, as in the expense app. The two apps track processing separately, so one message may be processed by both.
 
@@ -453,7 +452,7 @@ Other LinkedIn senders seen carried no application status: `invitations@`, `grou
 ### Observed sequences
 
 - LinkedIn: applied, then rejected 3 days later (several); applied, then viewed (four, one within 4 hours).
-- LinkedIn: viewed or rejected for roles applied for before 2026-04-14, with no applied email in the window.
+- LinkedIn: viewed or rejected for roles applied for before the sample's start, 2026-04-14, with no applied email in the window. Updates for roles applied for before the tracker's start, 2026-10-08, arrive the same way and create an application, as [matching](#6-matching) describes.
 - LinkedIn then employer: applied, viewed, then an employer interview invitation the next day.
 - Three different roles at one company on LinkedIn; two different roles at one company on Jobstreet on the same day.
 - Jobstreet: submitted, viewed, rejected; submitted, viewed, closed, then a digest showing `Reviewing applications`.

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -18,7 +17,6 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 
 from .constants import (
     GMAIL_API_BASE_URL,
-    GMAIL_RATE_LIMIT_MAX_WAIT_SECONDS,
     GMAIL_READONLY_SCOPE,
     GMAIL_REQUEST_TIMEOUT_SECONDS,
     SKIPPED_SEARCH_TERMS,
@@ -32,7 +30,6 @@ ISSUED_FILE = "token-readonly.issued"
 
 SIGN_IN_COMMAND = "mizu-kakeibo gmail-sign-in"
 _RAW_FIELDS = ("id", "threadId", "internalDate", "labelIds", "raw")
-_RATE_LIMIT_REASONS = frozenset({"rateLimitExceeded", "userRateLimitExceeded"})
 
 
 class GmailSignInError(RuntimeError):
@@ -134,53 +131,20 @@ def sign_in(directory: Path = GMAIL_API_DIRECTORY) -> Credentials:
     return credentials
 
 
-def _reason(response: httpx.Response) -> str | None:
+def _error_reason(response: httpx.Response) -> str:
     try:
         error = response.json().get("error", {})
         reason = error.get("errors", [{}])[0].get("reason") or error.get("status")
     except (json.JSONDecodeError, AttributeError, IndexError, TypeError):
-        return None
-    return reason if isinstance(reason, str) else None
-
-
-def _error_reason(response: httpx.Response) -> str:
-    reason = _reason(response)
-    return f"HTTP {response.status_code}" + (f" {reason}" if reason else "")
-
-
-def _rate_limited(response: httpx.Response) -> bool:
-    if response.status_code == 429:
-        return True
-    return response.status_code == 403 and _reason(response) in _RATE_LIMIT_REASONS
-
-
-def _retry_wait(response: httpx.Response, default: float) -> float:
-    """Wait the response's `Retry-After` seconds, capped, or the default when it gives none."""
-    try:
-        seconds = float(response.headers.get("Retry-After", ""))
-    except ValueError:
-        return default
-    return min(max(seconds, 0.0), GMAIL_RATE_LIMIT_MAX_WAIT_SECONDS)
+        reason = None
+    return f"HTTP {response.status_code}" + (f" {reason}" if isinstance(reason, str) else "")
 
 
 class GmailApiClient:
-    """Read-only Gmail API calls for one sync. Responses never carry `snippet` out.
+    """Read-only Gmail API calls for one sync. Responses never carry `snippet` out."""
 
-    A rate-limited request is retried once after each of `rate_limit_waits`, in seconds; with
-    none, as the expense sync uses it, the first refusal is a retrieval error.
-    """
-
-    def __init__(
-        self,
-        credentials: Credentials,
-        *,
-        client: httpx.Client | None = None,
-        rate_limit_waits: Sequence[float] = (),
-        sleep: Callable[[float], None] = time.sleep,
-    ) -> None:
+    def __init__(self, credentials: Credentials, *, client: httpx.Client | None = None) -> None:
         self._credentials = credentials
-        self._rate_limit_waits = tuple(rate_limit_waits)
-        self._sleep = sleep
         self._owns_client = client is None
         self._client = client or httpx.Client(
             base_url=GMAIL_API_BASE_URL, timeout=GMAIL_REQUEST_TIMEOUT_SECONDS
@@ -196,9 +160,9 @@ class GmailApiClient:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    def _send(self, path: str, params: dict[str, Any]) -> httpx.Response:
+    def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
         try:
-            return self._client.get(
+            response = self._client.get(
                 path,
                 params=params,
                 headers={"Authorization": f"Bearer {self._credentials.token}"},
@@ -207,14 +171,6 @@ class GmailApiClient:
             raise GmailRetrievalError(
                 f"Gmail API request failed: {type(error).__name__}"
             ) from error
-
-    def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
-        response = self._send(path, params)
-        for wait in self._rate_limit_waits:
-            if not _rate_limited(response):
-                break
-            self._sleep(_retry_wait(response, wait))
-            response = self._send(path, params)
         if response.status_code == 401:
             raise GmailSignInError(f"Gmail refused the sign-in; run `{SIGN_IN_COMMAND} --replace`")
         if response.is_error:
