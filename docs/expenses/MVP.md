@@ -124,6 +124,7 @@ Version 1 replaces the agent request with an hourly sync that runs by itself on 
 - Only a scheduled sync shows the notification and dialog.
 - Keep a private record of each sync's message IDs, counts, and errors for 90 days, never message content.
 - Keep the agent-driven sync as a manual fallback.
+- Once the [job tracker's scheduled sync](../jobs/MVP.md#scheduled-sync) is built, each hourly run also syncs the job tracker, after the expense sync, as the user chose on 2026-10-23. The two share the hours, the laptop checks, and the Gmail sign-in and analyser checks, but not processing state. A job sync that is running or failing never stops the expense sync. The expense notification, dialogs, and record do not change.
 
 ## Spending summaries
 
@@ -139,7 +140,7 @@ The user asked on 2026-10-18, after Version 1, for a quick way to see what they 
 - Commands use the live database and ledger unless told otherwise, so everyday use needs no file paths.
 - When changes have been merged to `main` since the installed copy was built, the summary says so and shows the commands to update it. The user asked for this on 2026-10-21, so updating does not depend on remembering it after each merge. Nothing updates itself.
 - A summary covers what the latest sync has logged; mail that arrived since is not included until the next sync.
-- Once the [job tracker](../jobs/MVP.md) has a database, the summary also shows how many job applications it tracks and how many of its emails wait for review, with its commands, so one command shows both apps. This is the first surface the two projects share, chosen by the user on 2026-10-22 as a step toward combining them. Reading the counts never changes the job tracker or waits for its sync, and without a job database the summary is unchanged.
+- Once the [job tracker](../jobs/MVP.md) has a database, the summary also shows how many job applications it tracks and how many of its emails wait for review, with its commands, so one command shows both apps. With the job tracker's [scheduled sync](../jobs/MVP.md#skim-list), it also shows how many job-related emails there are to skim this week. This is the first surface the two projects share, chosen by the user on 2026-10-22 as a step toward combining them. Reading the counts never changes the job tracker or waits for its sync, and without a job database the summary is unchanged.
 
 ## External payment applications
 
