@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import traceback
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
@@ -71,6 +72,17 @@ FAILURE_DIALOG_SCRIPT = "\n".join(
         "end run",
     ]
 )
+JOB_TITLE = "Mizu Kakeibo Jobs"
+JOB_ANALYSED = ("status_update", "not_application", "review", "failed")
+JOB_UPDATES = ("created", "advanced", "reopened")  # a step with only unchanged links is silent
+JOB_FAILURE_SUBTITLE = "Job sync stopped"
+JOB_FAILURE_TEXTS = {
+    "sign_in": 'The job sync can\'t read Gmail. Run "mizu-kakeibo gmail-sign-in" in Terminal.',
+    "runtime": "The job sync couldn't use the analyser (Ollama). It will try again next hour.",
+    "retrieval": "The job sync couldn't search Gmail. It will try again next hour.",
+    "unexpected": "The job sync stopped with an unexpected error. "
+    "The details are in launchd.err.log beside the expense database.",
+}
 FAILURE_DIALOGS = {
     "sign_in": "The sync can't read Gmail because the sign-in has expired or was removed. "
     'Run "mizu-kakeibo gmail-sign-in" in Terminal.',
@@ -203,10 +215,10 @@ class System:
     def sleep(self, seconds: float) -> None:
         time.sleep(seconds)
 
-    def notify(self, subtitle: str, text: str) -> None:
+    def notify(self, subtitle: str, text: str, title: str = TITLE) -> None:
         with suppress(OSError, subprocess.SubprocessError):
             subprocess.run(
-                [OSASCRIPT, "-e", NOTIFICATION_SCRIPT, TITLE, subtitle, text],
+                [OSASCRIPT, "-e", NOTIFICATION_SCRIPT, title, subtitle, text],
                 capture_output=True,
                 timeout=10,
                 check=False,
@@ -422,41 +434,128 @@ def _now() -> datetime:
 
 
 @dataclass(frozen=True)
+class Failure:
+    """Why a step, or the shared checks before both steps, stopped before processing."""
+
+    stage: str
+    error: str
+    unexpected: Exception | None = None  # raised after the run so launchd's error file has it
+
+
+def _message_errors(results: list[dict[str, Any]]) -> dict[str, str]:
+    return {
+        result["message_id"]: sanitized_error(result["error"])
+        for result in results
+        if result["status"] == "failed" and result["error"]
+    }
+
+
+def _failure(error: Exception) -> Failure:
+    if isinstance(error, GmailSignInError):
+        return Failure("sign_in", str(error))
+    if isinstance(error, AnalysisError):
+        return Failure("runtime", str(error))
+    if isinstance(error, GmailRetrievalError):
+        return Failure("retrieval", str(error))
+    return Failure("unexpected", type(error).__name__, error)
+
+
+@dataclass(frozen=True)
 class RunResult:
     status: int
     record: dict[str, Any] | None = None
-    unexpected: BaseException | None = None
+    unexpected: Exception | None = None
+
+
+@dataclass(frozen=True)
+class SharedChecks:
+    """What the gates and shared checks found, for the expense step's record."""
+
+    trigger: str
+    started: datetime
+    wake: WakeState
+    power: PowerState
+    runtime: RuntimeStart
+    failure: Failure | None
 
 
 def scheduled_sync(
     database: Path,
-    sync: Callable[[bool, Callable[[], None]], SyncReport],
+    jobs_database: Path,
     *,
+    check_sign_in: Callable[[], object],
+    verify_runtime: Callable[[], object],
+    sync: Callable[[bool], SyncReport],
+    jobs_sync: Callable[[], dict[str, Any]],
     system: System,
     write_review_script: Callable[[], Path],
 ) -> int:
-    """Run one scheduled sync behind the run lock and gates, record it, then report it.
+    """Run one scheduled sync: the shared gates and checks once, then the expense and job steps.
 
-    `sync(full, before_runtime)` runs the Gmail API sync and calls `before_runtime` after
-    the sign-in check and before the runtime check. The notification and dialog come
-    after the lock is released; a review dialog first writes the review script it opens.
+    `sync(full)` runs the expense Gmail API sync and `jobs_sync()` the job tracker's, each while
+    its step holds that app's run lock. A held lock or a failure in one step does not stop the
+    other; a failed sign-in or runtime check stops both and is reported by the expense step.
+    Each step shows its notification or dialog after releasing its lock.
     """
     live = Path(database).parent
     runs, log = live / "runs", live / "scheduled.log"
     started = _now().astimezone(MALAYSIA)
     trigger = "launchd" if os.environ.get("XPC_SERVICE_NAME") == SYNC_LABEL else "command"
-    try:
-        with run_lock(database):
-            result = _locked_run(runs, log, started, trigger, sync, system)
-    except RunLockHeldError as error:
-        holder = (error.holder or {}).get("pid", "unknown")
-        _append_log(log, started, {"trigger": trigger, "outcome": "locked", "holder_pid": holder})
+    wake = system.wake_state()
+    power = system.power_state() if wake.full else None
+    gate = _gate_stop(wake, power)
+    if gate is not None:
+        # No step runs, but old expense records are still deleted when the lock is free.
+        with suppress(RunLockHeldError), run_lock(database):
+            delete_old_records(runs, log, started)
+        _append_log(log, started, {"trigger": trigger, **gate})
         return 0
-    if result.record is not None:
-        _report(result.record, system, write_review_script)
-    if result.unexpected is not None:
-        raise result.unexpected
-    return result.status
+    assert power is not None  # read once the wake gate passed
+
+    runtime = RuntimeStart()
+    with system.keep_awake():
+        failure: Failure | None = None
+        try:
+            check_sign_in()
+            ensure_runtime(system, runtime)
+            verify_runtime()
+        except Exception as error:
+            failure = _failure(error)
+        shared = SharedChecks(trigger, started, wake, power, runtime, failure)
+        expense = _expense_step(database, runs, log, shared, sync)
+        if expense.record is not None:
+            _report(expense.record, system, write_review_script)
+        jobs = RunResult(0)
+        if failure is None:
+            jobs = _jobs_step(jobs_database, trigger, jobs_sync)
+            if jobs.record is not None:
+                _report_jobs(jobs.record, system)
+
+    unexpected = [
+        error
+        for error in (failure.unexpected if failure else None, expense.unexpected, jobs.unexpected)
+        if error is not None
+    ]
+    for error in unexpected[1:]:
+        traceback.print_exception(type(error), error, error.__traceback__)
+    if unexpected:
+        raise unexpected[0]
+    return max(expense.status, jobs.status, 0 if failure is None else 1)
+
+
+def _gate_stop(wake: WakeState, power: PowerState | None) -> dict[str, str] | None:
+    """Return the log fields of the first gate that fails, or None when both pass."""
+    if not wake.full:
+        graphics = None if wake.capabilities is None else "Graphics" in wake.capabilities
+        return {
+            "outcome": "not_full_wake",
+            "lid_closed": _yes_no(wake.lid_closed),
+            "graphics": _yes_no(graphics),
+        }
+    if power is not None and not power.sufficient:
+        percent = "unknown" if power.battery_percent is None else f"{power.battery_percent}%"
+        return {"outcome": "low_power", "power": power.source or "unknown", "battery": percent}
+    return None
 
 
 def _report(
@@ -471,75 +570,47 @@ def _report(
         system.show_dialog(FAILURE_DIALOGS[record["failed_stage"]], None)
 
 
-def _locked_run(
+def _append_locked(log: Path, started: datetime, trigger: str, error: RunLockHeldError) -> None:
+    holder = (error.holder or {}).get("pid", "unknown")
+    _append_log(log, started, {"trigger": trigger, "outcome": "locked", "holder_pid": holder})
+
+
+def _expense_step(
+    database: Path,
     runs: Path,
     log: Path,
-    started: datetime,
-    trigger: str,
-    sync: Callable[[bool, Callable[[], None]], SyncReport],
-    system: System,
+    shared: SharedChecks,
+    sync: Callable[[bool], SyncReport],
 ) -> RunResult:
-    delete_old_records(runs, log, started)
-    base: dict[str, Any] = {"trigger": trigger}
-    wake = system.wake_state()
-    if not wake.full:
-        graphics = None if wake.capabilities is None else "Graphics" in wake.capabilities
-        _append_log(
-            log,
-            started,
-            {
-                **base,
-                "outcome": "not_full_wake",
-                "lid_closed": _yes_no(wake.lid_closed),
-                "graphics": _yes_no(graphics),
-            },
-        )
-        return RunResult(0)
-    power = system.power_state()
-    if not power.sufficient:
-        percent = "unknown" if power.battery_percent is None else f"{power.battery_percent}%"
-        _append_log(
-            log,
-            started,
-            {
-                **base,
-                "outcome": "low_power",
-                "power": power.source or "unknown",
-                "battery": percent,
-            },
-        )
+    try:
+        with run_lock(database):
+            return _locked_expense_step(runs, log, shared, sync)
+    except RunLockHeldError as error:
+        _append_locked(log, shared.started, shared.trigger, error)
         return RunResult(0)
 
+
+def _locked_expense_step(
+    runs: Path,
+    log: Path,
+    shared: SharedChecks,
+    sync: Callable[[bool], SyncReport],
+) -> RunResult:
+    started, wake, power, runtime = shared.started, shared.wake, shared.power, shared.runtime
+    delete_old_records(runs, log, started)
     full = needs_full_search(runs)
-    runtime = RuntimeStart()
     report: SyncReport | None = None
-    failed_stage: str | None = None
-    error: str | None = None
-    unexpected: BaseException | None = None
-    with system.keep_awake():
+    failure, own = shared.failure, None
+    if failure is None:
         try:
-            report = sync(full, lambda: ensure_runtime(system, runtime))
-        except GmailSignInError as sign_in_error:
-            failed_stage, error = "sign_in", str(sign_in_error)
-        except AnalysisError as runtime_error:
-            failed_stage, error = "runtime", str(runtime_error)
-        except GmailRetrievalError as retrieval_error:
-            failed_stage, error = "retrieval", str(retrieval_error)
-        except Exception as other:  # recorded, then raised so launchd's error file has it
-            failed_stage, error, unexpected = "unexpected", type(other).__name__, other
+            report = sync(full)
+        except Exception as error:
+            failure = own = _failure(error)
 
     groups = (
         None if report is None else {group: report.output["summary"][group] for group in GROUPS}
     )
-    message_errors = (
-        {}
-        if report is None
-        else {
-            result["message_id"]: sanitized_error(result["error"])
-            for result in report.output["results"]
-            if result["status"] == "failed" and result["error"]
-        }
-    )
+    message_errors = {} if report is None else _message_errors(report.output["results"])
     counts = None if groups is None else {group: len(ids) for group, ids in groups.items()}
     if counts is None:
         notification = False
@@ -548,7 +619,7 @@ def _locked_run(
         notification = any(counts[group] for group in NOTIFIED)
         dialog = "review" if counts["needs_review"] or counts["failed"] else None
     record = {
-        "trigger": trigger,
+        "trigger": shared.trigger,
         "started_at": started.isoformat(timespec="seconds"),
         "ended_at": _now().astimezone(MALAYSIA).isoformat(timespec="seconds"),
         "wake": {
@@ -561,8 +632,8 @@ def _locked_run(
         "runtime_started_with": runtime.started_with,
         "full_search": full,
         "outcome": "synced" if report is not None else "failed",
-        "failed_stage": failed_stage,
-        "error": None if error is None else sanitized_error(error),
+        "failed_stage": None if failure is None else failure.stage,
+        "error": None if failure is None else sanitized_error(failure.error),
         "groups": groups,
         "counts": counts,
         "message_errors": message_errors,
@@ -572,13 +643,116 @@ def _locked_run(
     directory = _new_run_directory(runs, started)
     _write_private(directory / RUN_RECORD, json.dumps(record, indent=2) + "\n")
 
-    fields: dict[str, Any] = {**base, "outcome": record["outcome"], "run": directory.name}
+    fields: dict[str, Any] = {
+        "trigger": shared.trigger,
+        "outcome": record["outcome"],
+        "run": directory.name,
+    }
     if groups is None:
-        fields["stage"] = failed_stage
+        fields["stage"] = record["failed_stage"]
     else:
         fields.update(record["counts"])
     _append_log(log, started, fields)
-    return RunResult(1 if groups is None or groups["failed"] else 0, record, unexpected)
+    status = 1 if groups is None or groups["failed"] else 0
+    return RunResult(status, record, None if own is None else own.unexpected)
+
+
+def job_failure_notified(runs: Path, today: datetime) -> bool:
+    return any(
+        started.date() == today.date() and record.get("notification") == "failure"
+        for started, record in _records(runs)
+    )
+
+
+def job_notification_text(counts: dict[str, int], applications: dict[str, int]) -> tuple[str, str]:
+    """Return a job notification's subtitle and text from a job step's counts."""
+    checked = sum(counts[group] for group in JOB_ANALYSED)
+    updates = sum(applications[effect] for effect in JOB_UPDATES)
+    return (
+        f"Checked {_count(checked, 'new message')}",
+        f"{_count(updates, 'update')} · {counts['review']} to review · {counts['failed']} failed",
+    )
+
+
+def _report_jobs(record: dict[str, Any], system: System) -> None:
+    if record["notification"] == "update":
+        system.notify(
+            *job_notification_text(record["counts"], record["applications"]), title=JOB_TITLE
+        )
+    elif record["notification"] == "failure":
+        system.notify(
+            JOB_FAILURE_SUBTITLE, JOB_FAILURE_TEXTS[record["failed_stage"]], title=JOB_TITLE
+        )
+
+
+def _jobs_step(
+    jobs_database: Path, trigger: str, jobs_sync: Callable[[], dict[str, Any]]
+) -> RunResult:
+    live = Path(jobs_database).parent
+    runs, log = live / "runs", live / "scheduled.log"
+    started = _now().astimezone(MALAYSIA)
+    try:
+        with run_lock(jobs_database):
+            return _locked_jobs_step(runs, log, started, trigger, jobs_sync)
+    except RunLockHeldError as error:
+        _append_locked(log, started, trigger, error)
+        return RunResult(0)
+
+
+def _locked_jobs_step(
+    runs: Path,
+    log: Path,
+    started: datetime,
+    trigger: str,
+    jobs_sync: Callable[[], dict[str, Any]],
+) -> RunResult:
+    delete_old_records(runs, log, started)
+    report: dict[str, Any] | None = None
+    failure: Failure | None = None
+    try:
+        report = jobs_sync()
+    except Exception as error:
+        failure = _failure(error)
+
+    if report is None:
+        groups = counts = applications = None
+        notification = None if job_failure_notified(runs, started) else "failure"
+    else:
+        groups, applications = report["summary"], report["applications"]
+        counts = {group: len(ids) for group, ids in groups.items()}
+        changed = any(applications[effect] for effect in JOB_UPDATES)
+        notification = "update" if changed or counts["review"] or counts["failed"] else None
+    record = {
+        "trigger": trigger,
+        "started_at": started.isoformat(timespec="seconds"),
+        "ended_at": _now().astimezone(MALAYSIA).isoformat(timespec="seconds"),
+        "outcome": "synced" if report is not None else "failed",
+        "failed_stage": None if failure is None else failure.stage,
+        "error": None if failure is None else sanitized_error(failure.error),
+        "groups": groups,
+        "counts": counts,
+        "already_processed": None if report is None else report["already_processed"],
+        "applications": applications,
+        "skim": None if report is None else [item["message_id"] for item in report["skim"]],
+        "message_errors": {} if report is None else _message_errors(report["results"]),
+        "notification": notification,
+    }
+    directory = _new_run_directory(runs, started)
+    _write_private(directory / RUN_RECORD, json.dumps(record, indent=2) + "\n")
+
+    fields: dict[str, Any] = {
+        "trigger": trigger,
+        "outcome": record["outcome"],
+        "run": directory.name,
+    }
+    if counts is None:
+        fields["stage"] = record["failed_stage"]
+    else:
+        fields.update(counts)
+        fields["already_processed"] = record["already_processed"]
+    _append_log(log, started, fields)
+    status = 1 if counts is None or counts["failed"] else 0
+    return RunResult(status, record, None if failure is None else failure.unexpected)
 
 
 def launch_agent(program: Path, database: Path, ledger: Path, gmail_directory: Path) -> bytes:

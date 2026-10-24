@@ -4,7 +4,7 @@ import argparse
 import json
 import sqlite3
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -238,14 +238,11 @@ def run_sync(
     received_since: datetime,
     limit: int,
     full: bool,
-    before_runtime: Callable[[], None] | None = None,
 ) -> SyncReport:
     """Run one Gmail API sync while the caller holds the run lock, and return its report."""
     credentials = load_credentials(gmail_directory)
     store = Store(database, ledger)
     with OllamaAnalyser() as analyser, GmailApiClient(credentials) as gmail:
-        if before_runtime is not None:
-            before_runtime()
         runtime = analyser.verify_runtime()
         retrieval = retrieve_new_messages(
             gmail, store, received_since=received_since, limit=limit, full=full
@@ -277,17 +274,27 @@ def command_sync(args: argparse.Namespace) -> int:
     return 1 if report.output["summary"]["failed"] else 0
 
 
+def _verify_runtime() -> None:
+    with OllamaAnalyser() as analyser:
+        analyser.verify_runtime()
+
+
 def command_scheduled_sync(args: argparse.Namespace) -> int:
     return scheduled_sync(
         args.database,
-        lambda full, before_runtime: run_sync(
+        args.jobs_database,
+        check_sign_in=lambda: load_credentials(args.gmail_directory),
+        verify_runtime=_verify_runtime,
+        sync=lambda full: run_sync(
             args.database,
             args.ledger,
             args.gmail_directory,
             received_since=datetime.fromisoformat(SYNC_RECEIVED_SINCE),
             limit=SYNC_BATCH_LIMIT,
             full=full,
-            before_runtime=before_runtime,
+        ),
+        jobs_sync=lambda: run_jobs_sync(
+            args.jobs_database, args.gmail_directory, limit=JOBS_SYNC_BATCH_LIMIT
         ),
         system=System(),
         write_review_script=lambda: write_review_script(
@@ -446,40 +453,45 @@ def _process_job_retrieved(
     return JobProcessingResult("gmail", message_id, ProcessingStatus.FAILED, error=error)
 
 
-def command_jobs_sync(args: argparse.Namespace) -> int:
-    if args.limit < 1:
-        raise ValueError("the batch limit must be at least 1")
+def run_jobs_sync(database: Path, gmail_directory: Path, *, limit: int) -> dict[str, Any]:
+    """Run one job-tracker Gmail API sync while the caller holds its run lock."""
     messages: dict[str, InboxMessage] = {}
-    try:
-        with run_lock(args.database):
-            credentials = load_credentials(args.gmail_directory)
-            store = JobStore(args.database)
-            with GmailApiClient(credentials) as gmail, OllamaJobAnalyser() as analyser:
-                analyser.verify_runtime()
-                retrieval = retrieve_new_messages(
-                    gmail,
-                    store,
-                    received_since=datetime.fromisoformat(JOBS_RECEIVED_SINCE),
-                    limit=args.limit,
-                    full=True,
-                    skip_filter=None,
-                    search_terms=JOBS_SEARCH_TERMS,
-                    new_metadata_only=True,
-                )
-                processor = JobProcessor(store, analyser)
-                results = [
-                    _process_job_retrieved(processor, retrieval, message_id, messages)
-                    for message_id in retrieval.selection.message_ids
-                ]
-    except RunLockHeldError as error:
-        return _report_locked(error)
+    credentials = load_credentials(gmail_directory)
+    store = JobStore(database)
+    with GmailApiClient(credentials) as gmail, OllamaJobAnalyser() as analyser:
+        analyser.verify_runtime()
+        retrieval = retrieve_new_messages(
+            gmail,
+            store,
+            received_since=datetime.fromisoformat(JOBS_RECEIVED_SINCE),
+            limit=limit,
+            full=True,
+            skip_filter=None,
+            search_terms=JOBS_SEARCH_TERMS,
+            new_metadata_only=True,
+        )
+        processor = JobProcessor(store, analyser)
+        results = [
+            _process_job_retrieved(processor, retrieval, message_id, messages)
+            for message_id in retrieval.selection.message_ids
+        ]
     # Every run searches from the start, so its processed IDs are counted, not listed.
     report = run_report(results, messages, deferred=retrieval.selection.deferred_ids)
-    report = {
+    return {
         "summary": report.pop("summary"),
         "already_processed": len(retrieval.selection.already_processed_ids),
         **report,
     }
+
+
+def command_jobs_sync(args: argparse.Namespace) -> int:
+    if args.limit < 1:
+        raise ValueError("the batch limit must be at least 1")
+    try:
+        with run_lock(args.database):
+            report = run_jobs_sync(args.database, args.gmail_directory, limit=args.limit)
+    except RunLockHeldError as error:
+        return _report_locked(error)
     _write_json(report, None)
     return 1 if report["summary"]["failed"] else 0
 
@@ -753,10 +765,12 @@ def build_parser() -> argparse.ArgumentParser:
     sync.set_defaults(handler=command_sync)
 
     scheduled = subparsers.add_parser(
-        "scheduled-sync", help="run the hourly sync behind its gates and record it"
+        "scheduled-sync",
+        help="run the hourly expense and job syncs behind their gates and record them",
     )
     scheduled.add_argument("--gmail-directory", type=Path, default=GMAIL_API_DIRECTORY)
     _add_storage_options(scheduled)
+    scheduled.add_argument("--jobs-database", type=Path, default=JOBS_LIVE_DATABASE)
     scheduled.set_defaults(handler=command_scheduled_sync)
 
     agent = subparsers.add_parser(

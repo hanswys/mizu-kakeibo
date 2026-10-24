@@ -1,6 +1,6 @@
 # Job Tracker Contract
 
-**Status:** Version 0 contract agreed on 2026-10-17 (J0-2); the commands, terminal review, and run result added on 2026-10-18 (J0.5-1); Gmail API retrieval and `jobs-sync` added on 2026-10-22 (J0.5-2); the counts in the expense `status` added on 2026-10-23; the sampled layouts are from J0-1. Implementation status is tracked in [the roadmap](ROADMAP.md).
+**Status:** Version 0 contract agreed on 2026-10-17 (J0-2); the commands, terminal review, and run result added on 2026-10-18 (J0.5-1); Gmail API retrieval and `jobs-sync` added on 2026-10-22 (J0.5-2); the counts in the expense `status` added on 2026-10-23; the scheduled job step added on 2026-10-25 (J1-1); the sampled layouts are from J0-1. Implementation status is tracked in [the roadmap](ROADMAP.md).
 **Contract version:** `jobs-v0`
 
 This document is the source of truth for the job tracker's retrieval, analyser input and output, normalization of company names and job titles, matching, status update, review, persistence, and evaluation rules. Product scope belongs in the [MVP](MVP.md). The shared Gmail adapter and `inbox-message/v0` envelope are defined in the [expense contract](../expenses/inbox-expense-contract.md) and are referenced, not copied.
@@ -258,7 +258,7 @@ A resolution is recorded separately and never modifies the analysis, so the Gmai
 
 `jobs-process` takes a JSON file holding one message or an array of them, each a connector `RAW` response, a Gmail full-message response, or an `inbox-message/v0` envelope. Responses are normalized preferring HTML, as [inbox retrieval](#1-inbox-retrieval) requires; a response that cannot be normalized is a failure of that message alone. `--selection` takes a selection's JSON and reports its `already_processed_ids` as skipped and its `deferred_ids` as deferred. `--reevaluate` re-evaluates messages that are already processed, as [re-evaluation](#re-evaluation) describes.
 
-`jobs-sync` runs one sync by hand; the MVP has no scheduled run. It takes the run lock, reads the shared sign-in without ever opening a browser, checks the analyser runtime, and then searches, selects, and fetches as [inbox retrieval](#1-inbox-retrieval) describes, before processing the fetched messages oldest first. A sign-in that is missing or refused stops the sync, as in the expense app, and records nothing. A message whose fetch or normalization fails is reported as `failed` and stays retryable. `jobs-sync` prints the same report as `jobs-process --selection`, with two differences, because every run searches from the start: `skipped` lists only the IDs found already processed when their analysis was stored, and `already_processed` counts the IDs the search found already processed.
+`jobs-sync` runs one sync by hand, and the hourly [scheduled job step](#scheduled-job-step) runs the same sync. It takes the run lock, reads the shared sign-in without ever opening a browser, checks the analyser runtime, and then searches, selects, and fetches as [inbox retrieval](#1-inbox-retrieval) describes, before processing the fetched messages oldest first. A sign-in that is missing or refused stops the sync, as in the expense app, and records nothing. A message whose fetch or normalization fails is reported as `failed` and stays retryable. `jobs-sync` prints the same report as `jobs-process --selection`, with two differences, because every run searches from the start: `skipped` lists only the IDs found already processed when their analysis was stored, and `already_processed` counts the IDs the search found already processed.
 
 The job tracker follows the expense contract's [processing rules](../expenses/inbox-expense-contract.md#6-processing-failure-and-idempotency) on its own database:
 
@@ -271,6 +271,22 @@ A run reports its message IDs in six groups: `status_update` for status updates 
 
 The model's reason is sanitized before it is stored, as in the expense app: control characters, email addresses, URLs, and long digit runs are removed, and so are the sender, the subject, and the extracted company and job title. A reason that quotes four consecutive words of the message, at least 16 characters together, is replaced by a fixed one. The fixed reasons above are stored unchanged.
 
+### Scheduled job step
+
+Since 2026-10-25 the job tracker syncs as the second step of the expense app's [scheduled run](../expenses/inbox-expense-contract.md#9-scheduled-run), as the [MVP](MVP.md#scheduled-sync) describes. The step runs only after the run's gates, `caffeinate`, sign-in check, and runtime check pass, and after the expense step has recorded and reported its own result. A run stopped before then writes nothing for the job step; the expense `scheduled.log` has its line.
+
+- **Sync.** The step takes the job tracker's run lock and runs the `jobs-sync` sync with its default batch of 25: the oldest new messages, with the rest deferred, from a search from the start that finds earlier failures again. Its database is the `--jobs-database` of `scheduled-sync`, which defaults to the live database, so the LaunchAgent does not name it. While another job run holds the lock, the step records nothing and logs `locked`.
+- **Failure.** A failure or unexpected error in the step does not affect the expense step, and one in the expense step does not stop this one. A message that fails is reported as in `jobs-sync` and is found again the next hour. A step that stops before processing, at its sign-in, runtime check, or Gmail search, or with an unexpected error, records the stage; an unexpected error is recorded by its type and raised after the run, so `launchd.err.log` beside the expense database has it.
+- **Run record.** A step that takes the lock writes `run.json` in its own directory under `~/mizu-kakeibo-private/jobs/live/runs/`, named for the step's start in Malaysia time as `YYYYMMDD-HHMMSS`, and appends one line to `~/mizu-kakeibo-private/jobs/live/scheduled.log`, which it also prints. The record holds the trigger, start and end times, `outcome` (`synced` or `failed`), the failed stage and sanitized error, the six run groups as message IDs with their counts, the `already_processed` count, the application counts, the skim list's message IDs, each failed message's sanitized error, and `notification` (`update`, `failure`, or `null`). A step stopped before processing has no groups, counts, application counts, or skim list. The log line holds the time, trigger, outcome, run directory, and either the group counts and `already_processed` or the stage; a step stopped by the lock logs `outcome=locked` with the holder's process ID. Neither holds message content, senders, subjects, company names, or job titles; errors are sanitized as in the expense run record. The step first deletes job run directories and log lines older than 90 days, after taking the lock. The expense record, `scheduled.log`, and `status` last-sync line never include the job step.
+- **Notification.** After releasing the lock, a step that created, advanced, or reopened an application, stored a review item, or failed a message shows a notification titled `Mizu Kakeibo Jobs`, with the subtitle `Checked N new messages`, counting status updates, not-applications, review items, and failures, and the text `U updates · R to review · F failed`, where U counts the applications created, advanced, or reopened. A step with only unchanged links and `not_application` decisions shows nothing. The step never opens a dialog.
+- **Failure notification.** A step that stops before processing shows a notification with the subtitle `Job sync stopped`, unless an earlier step that day, in Malaysia time, recorded `notification` `failure`. A failed shared sign-in or runtime check is shown only by the expense failure dialog. The text names the stage:
+  - sign-in: `The job sync can't read Gmail. Run "mizu-kakeibo gmail-sign-in" in Terminal.`
+  - runtime: `The job sync couldn't use the analyser (Ollama). It will try again next hour.`
+  - search: `The job sync couldn't search Gmail. It will try again next hour.`
+  - unexpected: `The job sync stopped with an unexpected error. The details are in launchd.err.log beside the expense database.`
+
+Only the scheduled step notifies. `jobs-sync` and `jobs-process` started by hand print their report and never notify.
+
 ### Skim list
 
 The run result also lists, under `skim`, each message of the run decided `not_application` that looks job-related, with its message ID, sender, and subject, so the user can skim them for a missed status update. A message looks job-related when any of these holds:
@@ -279,7 +295,7 @@ The run result also lists, under `skim`, each message of the run decided `not_ap
 - Its sender's domain is a hiring system or job board, or a subdomain of one: `workable.com`, `ashbyhq.com`, `greenhouse.io`, `lever.co`, `myworkday.com`, `smartrecruiters.com`, `successfactors.com`, `successfactors.eu`, `jobs2web.com`, `icims.com`, or `indeed.com`.
 - Its subject, after the [text folding](#5-name-normalization), contains the word `application`, `applications`, `applied`, `applying`, `interview`, or `interviews`.
 
-The list is in the run's local result only; it changes nothing and is not stored.
+The list is in the run's local result only; it changes nothing and is not stored, apart from its message IDs in a [scheduled job step's](#scheduled-job-step) run record.
 
 ### Application list
 

@@ -132,6 +132,9 @@ the installed copy is behind `main`. Each run appends one line to
 review item, or failed a message, a notification shows its counts, and review items or failures also open a
 dialog whose `Review in Terminal` button opens `~/mizu-kakeibo-private/live/review.command`
 in Terminal, which starts `mizu-kakeibo review`.
+After the expense step, each run syncs the job tracker as a second step, with its own
+run record and `scheduled.log` under `~/mizu-kakeibo-private/jobs/live/` and its own
+notification, as the job contract's scheduled job step describes.
 A run that fails before reading any message, for example because the Gmail sign-in
 expired, shows one dialog a day saying what to do. To run it now instead of waiting for
 the hour:

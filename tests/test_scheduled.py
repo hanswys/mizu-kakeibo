@@ -4,12 +4,14 @@ import json
 import plistlib
 import shlex
 import subprocess
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import httpx
 import pytest
+from jobs_fakes import ScriptedOllama, other
 from test_gmail_api import (  # noqa: F401 - the autouse fixture guards against real Google calls
     SNIPPET,
     FakeAnalyser,
@@ -32,9 +34,11 @@ SUBJECT = "Fictional subject that must never be recorded"
 
 
 class FakeSystem:
-    def __init__(self, database) -> None:
+    def __init__(self, database, jobs_database) -> None:
         self.database = database
+        self.jobs_database = jobs_database
         self.notifications: list[tuple[str, str]] = []
+        self.job_notifications: list[tuple[str, str]] = []
         self.dialogs: list[tuple[str, object]] = []
         self.shown_under_lock = 0
         self.wake = FULL_WAKE
@@ -65,17 +69,22 @@ class FakeSystem:
     def sleep(self, _seconds):
         self.sleeps += 1
 
-    def notify(self, subtitle, text):
-        self._check_lock()
-        self.notifications.append((subtitle, text))
+    def notify(self, subtitle, text, title=scheduled.TITLE):
+        if title == scheduled.TITLE:
+            self._check_lock(self.database)
+            self.notifications.append((subtitle, text))
+        else:
+            assert title == scheduled.JOB_TITLE
+            self._check_lock(self.jobs_database)
+            self.job_notifications.append((subtitle, text))
 
     def show_dialog(self, text, review_script):
-        self._check_lock()
+        self._check_lock(self.database)
         self.dialogs.append((text, review_script))
 
-    def _check_lock(self):
+    def _check_lock(self, database):
         try:
-            with run_lock(self.database):
+            with run_lock(database):
                 pass
         except RunLockHeldError:
             self.shown_under_lock += 1
@@ -105,9 +114,13 @@ def run(tmp_path, monkeypatch):
             api_message("m3", "Example Friend <friend@example.invalid>", SUBJECT, offset=2),
         ]
     )
-    system = FakeSystem(live / "kakeibo.sqlite3")
+    jobs_live = tmp_path / "jobs" / "live"
+    system = FakeSystem(live / "kakeibo.sqlite3", jobs_live / "job-tracker.sqlite3")
     clock = Clock()
+    # The job step reads the same fake inbox and finds no application in it.
+    job_ollama = ScriptedOllama(defaultdict(lambda: other("not_application")))
     monkeypatch.setattr(cli, "OllamaAnalyser", lambda: analyser)
+    monkeypatch.setattr(cli, "OllamaJobAnalyser", job_ollama.analyser)
     monkeypatch.setattr(
         cli, "GmailApiClient", lambda creds: gmail_api.GmailApiClient(creds, client=fake.client())
     )
@@ -138,12 +151,26 @@ def run(tmp_path, monkeypatch):
         path = live / "scheduled.log"
         return path.read_text().splitlines() if path.exists() else []
 
+    def job_records():
+        runs = jobs_live / "runs"
+        if not runs.is_dir():
+            return []
+        return [json.loads((path / "run.json").read_text()) for path in sorted(runs.iterdir())]
+
+    def job_log():
+        path = jobs_live / "scheduled.log"
+        return path.read_text().splitlines() if path.exists() else []
+
     def silent():
-        return system.notifications == [] and system.dialogs == []
+        return system.notifications == system.job_notifications == system.dialogs == []
 
     return SimpleNamespace(
         argv=argv,
         live=live,
+        jobs_live=jobs_live,
+        job_ollama=job_ollama,
+        job_records=job_records,
+        job_log=job_log,
         fake=fake,
         analyser=analyser,
         system=system,
@@ -196,7 +223,8 @@ def test_a_scheduled_sync_writes_its_record_and_one_log_line(run, capsys) -> Non
         "2026-10-17T10:00:04+08:00 trigger=command outcome=synced run=20261017-100004 "
         "expense=1 not_expense=1 needs_review=0 skipped=0 filtered=1 failed=0 deferred=0"
     )
-    assert capsys.readouterr().out == line + "\n"
+    [job_line] = run.job_log()
+    assert capsys.readouterr().out == f"{line}\n{job_line}\n"  # the expense step comes first
     run_directory = run.live / "runs" / "20261017-100004"
     assert run_directory.stat().st_mode & 0o777 == 0o700
     assert (run_directory / "run.json").stat().st_mode & 0o777 == 0o600
@@ -216,10 +244,11 @@ def test_a_run_that_finds_the_lock_held_logs_it_and_records_nothing(run, hold_ru
         f"2026-10-17T10:00:04+08:00 trigger=command outcome=locked holder_pid={holder.pid}"
     ]
     assert run.records() == []
-    assert run.fake.requests == []
-    assert run.system.kept_awake == 0
+    assert run.analyser.inputs == []
     assert run.silent()
     assert not run.script.exists()
+    # Only the expense step is skipped: the job step still runs.
+    assert [record["outcome"] for record in run.job_records()] == ["synced"]
 
 
 def test_every_hour_syncs_after_a_clean_sync_earlier_that_day(run) -> None:

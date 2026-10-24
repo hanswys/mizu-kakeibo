@@ -6,13 +6,13 @@ How to use the job-application tracker day to day. It is part of the same `mizu-
 
 When you run a sync, the tracker reads your Gmail inbox messages received since 8 Oct 2026 and finds the ones that report the status of a job application: submitted, viewed, an interview, a rejection, or an offer. It keeps one application for each company and job title, with its current status. Emails it is unsure about, or that look like an application it already has under a slightly different name, wait for you in a review list. Job alerts, recommendations, and other mail change nothing.
 
-Nothing runs by itself. The tracker syncs only when you start it, and it never shows a notification or dialog.
+Every hour from 08:00 to 23:00, the expense app's hourly sync also syncs the tracker, right after the expenses; see [the hourly sync](#the-hourly-sync). You can still sync by hand at any time.
 
 Everything stays on the laptop, in `~/mizu-kakeibo-private/jobs/live/job-tracker.sqlite3`. The first sync creates it. It is separate from the expense ledger: the two apps read the same inbox but keep their own records, so one email can be both an expense and a job update.
 
 ## Syncing
 
-Run:
+The [hourly sync](#the-hourly-sync) does this for you. To sync now, run:
 
 ```sh
 mizu-kakeibo jobs-sync
@@ -38,7 +38,31 @@ It prints its result as JSON:
 
 Glance at `skim` after each sync. It lists emails from LinkedIn, Jobstreet, and hiring systems, or with an application or interview in the subject, that the tracker decided report no status. Those are not reviewed, so a missed update would otherwise go unnoticed. If one is a real status update, ask Claude Code in this repository to re-evaluate it.
 
-Only one job sync runs at a time; another one started meanwhile prints `locked` and does nothing. A job sync and the hourly expense sync can run at once.
+Only one job sync runs at a time, by hand or hourly; another one started meanwhile prints `locked` and does nothing. A sync by hand never shows a notification.
+
+## The hourly sync
+
+The tracker syncs as the second step of the expense app's [hourly sync](../expenses/USER-GUIDE.md#a-normal-day), so it runs at the same hours, when the laptop is open, awake, and charged enough, and after the expenses are done:
+
+1. **Every hour.** It reads up to 25 new emails, oldest first, exactly as `mizu-kakeibo jobs-sync` does. More wait for the next hour, and an email that failed is tried again then.
+2. **The notification.** If it created, advanced, or reopened an application, found an email to review, or failed one, a notification titled `Mizu Kakeibo Jobs` says how many emails it checked, then for example `2 updates · 1 to review · 0 failed`. An hour with nothing new, or only emails that change no application, stays silent. No dialog opens: run `mizu-kakeibo jobs-review` when it suits you.
+3. **Problems.** If the job sync could not start, for example because Gmail could not be searched, a `Job sync stopped` notification says so, at most once a day, and the next hour tries again. A problem with the Gmail sign-in or Ollama stops both apps and is shown once, by the expense app's dialog.
+
+If you are running `jobs-sync` by hand when the hour comes, the hourly job step is skipped and the expenses still sync. A problem in either app never stops the other.
+
+To see what happened each hour, read the end of the tracker's own log:
+
+```sh
+tail ~/mizu-kakeibo-private/jobs/live/scheduled.log
+```
+
+| `outcome=` | Meaning |
+| --- | --- |
+| `synced` | The job sync ran; the counts follow |
+| `failed` | It stopped before reading any email; `stage=` says where |
+| `locked` | Another job sync was already running |
+
+Hours skipped because the lid was closed or the battery was low appear only in the expense app's `scheduled.log`. Each hour's details are kept for 90 days in `runs/` beside the log, as message IDs and counts only.
 
 ## Checking your applications
 
@@ -107,6 +131,7 @@ When you attach an email whose company or job title is written differently, such
 | The Gmail sign-in has expired or was removed | Run `mizu-kakeibo gmail-sign-in --replace` and approve read-only access in the browser. The sign-in is shared, so this fixes the expense sync too. |
 | An error about Ollama | Check that Ollama is running, as for the expense app; see the [README](../../README.md#setup) |
 | `no job-tracker database` from `jobs-list` or `jobs-review` | Run `mizu-kakeibo jobs-sync` first; the first sync creates it |
+| A `Job sync stopped` notification | Usually nothing; it tries again next hour. If it repeats, run `mizu-kakeibo jobs-sync` to see the error, or look at `~/mizu-kakeibo-private/live/launchd.err.log` after an unexpected error. |
 | `Jobs  could not read the job database` in the summary | Run `mizu-kakeibo` again. If it stays, ask Claude Code in this repository to investigate. |
 
 Keep `~/mizu-kakeibo-private/` backed up if your application history matters to you; it is never committed to the repository.

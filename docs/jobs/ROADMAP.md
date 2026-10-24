@@ -296,7 +296,7 @@ The scheduled run is shared infrastructure. J1-1 changes the expense app's [sche
 
 **Type:** AFK
 
-**Status:** `planned`
+**Status:** `complete` (2026-10-25. `scheduled-sync` checks the gates, `caffeinate`, the sign-in, and the runtime once, then runs the expense step under its lock and the job step under the job lock, each recorded and reported on its own; see the job contract's [scheduled job step](job-tracker-contract.md#scheduled-job-step). The job database is `scheduled-sync --jobs-database`, which defaults to the live one, so the LaunchAgent is unchanged and a reinstall is enough. A manual run from the branch against a copy of the job database left the expense step's record, log line, and `status` line unchanged. Everyday use is left to J1-3.)
 
 **Blocked by:** J0.5-3 with a `proceed` decision
 
@@ -306,16 +306,16 @@ Split `scheduled-sync` into shared checks and two steps. The gates, `caffeinate`
 
 ### Acceptance criteria
 
-- [ ] One LaunchAgent runs both steps every hour from 08:00 to 23:00, the expense step first. The gates, `caffeinate`, sign-in check, and runtime check run once per hour.
-- [ ] A held expense lock skips only the expense step, and a held job lock skips only the job step. Each is recorded as `locked`.
-- [ ] A failure or unexpected error in either step does not stop the other. A failed sign-in or runtime check stops both, with one expense failure dialog as today.
-- [ ] The job step selects at most 25 new messages, oldest first, defers the rest, and finds earlier failures through its search from the start.
-- [ ] The job step writes its own run record and log line under `~/mizu-kakeibo-private/jobs/live/`, with message IDs, counts, the skim message IDs, and sanitized errors only, and deletes them after 90 days. The expense run record, `scheduled.log`, and the `status` last-sync line are unchanged.
-- [ ] After a job step that created, advanced, or reopened an application, stored a review item, or failed a message, a notification titled for the job tracker shows the counts of updates, review items, and failures. A step with only unchanged links or `not_application` decisions shows nothing, and no dialog opens.
-- [ ] A job step that stops before processing because of its own failure shows one notification saying so, at most once a day in Malaysia time.
-- [ ] A manual `jobs-sync` and a manual `sync` behave as before and never notify.
-- [ ] Expense scheduled-run tests pass unchanged, apart from the step split. New tests cover each lock held, each step failing, the shared checks failing, and the job notification rules, with a fake system and Gmail client.
-- [ ] The job [user guide](USER-GUIDE.md) no longer says that nothing runs by itself, and the expense user guide mentions the job step.
+- [x] One LaunchAgent runs both steps every hour from 08:00 to 23:00, the expense step first. The gates, `caffeinate`, sign-in check, and runtime check run once per hour.
+- [x] A held expense lock skips only the expense step, and a held job lock skips only the job step. Each is recorded as `locked`.
+- [x] A failure or unexpected error in either step does not stop the other. A failed sign-in or runtime check stops both, with one expense failure dialog as today.
+- [x] The job step selects at most 25 new messages, oldest first, defers the rest, and finds earlier failures through its search from the start.
+- [x] The job step writes its own run record and log line under `~/mizu-kakeibo-private/jobs/live/`, with message IDs, counts, the skim message IDs, and sanitized errors only, and deletes them after 90 days. The expense run record, `scheduled.log`, and the `status` last-sync line are unchanged.
+- [x] After a job step that created, advanced, or reopened an application, stored a review item, or failed a message, a notification titled for the job tracker shows the counts of updates, review items, and failures. A step with only unchanged links or `not_application` decisions shows nothing, and no dialog opens.
+- [x] A job step that stops before processing because of its own failure shows one notification saying so, at most once a day in Malaysia time.
+- [x] A manual `jobs-sync` and a manual `sync` behave as before and never notify.
+- [x] Expense scheduled-run tests pass unchanged, apart from the step split. New tests cover each lock held, each step failing, the shared checks failing, and the job notification rules, with a fake system and Gmail client.
+- [x] The job [user guide](USER-GUIDE.md) no longer says that nothing runs by itself, and the expense user guide mentions the job step.
 
 ## Issue J1-2 List the emails to skim with jobs-skim
 

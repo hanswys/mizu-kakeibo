@@ -24,6 +24,8 @@ Everything stays on the laptop, under `~/mizu-kakeibo-private/live/`:
 
 A sync is skipped, and tried again the next hour, while the lid is closed, the laptop is asleep, or it is on battery below 20%. An hour missed that way runs when you next open the laptop, or at the next hour.
 
+After the expenses, each hourly sync also syncs the [job-application tracker](../jobs/USER-GUIDE.md#the-hourly-sync), with its own notification titled `Mizu Kakeibo Jobs` and its own log. It never delays the expense notification or dialog, and a problem in it never stops the expense sync.
+
 ## Checking your spending
 
 Open Terminal and run `mizu-kakeibo` on its own:
