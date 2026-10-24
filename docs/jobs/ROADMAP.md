@@ -188,7 +188,7 @@ Version 0 is complete when all five issues meet their acceptance criteria. Versi
 
 ## Version 0.5 outcome
 
-Move the proven analyser and matching into a small local tool alongside the expense code. The agent retrieves Gmail messages through MCP, and the tool owns message-ID deduplication, analyser calls, matching, review state, and the application list in its own private database.
+Move the proven analyser and matching into a small local tool alongside the expense code. The tool retrieves Gmail messages through the Gmail API with `jobs-sync`, and owns message-ID deduplication, analyser calls, matching, review state, and the application list in its own private database.
 
 ## Issue J0.5-1 Build one repeatable local job-tracker run
 
@@ -241,7 +241,7 @@ Add `jobs-sync`, which searches, selects, and fetches new inbox messages through
 
 **Type:** HITL
 
-**Status:** `in-progress` (2026-10-23. Before the first batch finished, the user chose to shorten the backlog: `jobs-sync` now searches only inbox messages with a [job word](job-tracker-contract.md#1-inbox-retrieval), which cut the messages since the start from 453 to 191, about 22 minutes of model time, so the backlog runs as one `--limit 200` sync instead of 25-message batches. Every real status and review email in the J0-4 set contains a job word.)
+**Status:** `complete` (2026-10-24, decision `proceed`. Before the first batch finished, the user chose to shorten the backlog: `jobs-sync` now searches only inbox messages with a [job word](job-tracker-contract.md#1-inbox-retrieval), which cut the messages since the start from 453 to 191, about 22 minutes of model time, so the backlog runs as one `--limit 200` sync instead of 25-message batches. Every real status and review email in the J0-4 set contains a job word.)
 
 **Blocked by:** J0.5-2
 
@@ -251,17 +251,35 @@ Run the first sync over emails received on or after 2026-10-08, in as many `jobs
 
 ### Acceptance criteria
 
-- [ ] The first sync retrieves all inbox emails with a job word received on or after 2026-10-08, and none earlier.
-- [ ] The result identifies status-update, not-application, review, skipped, and failed message IDs.
-- [ ] The user checks the application list against their own knowledge of their applications.
-- [ ] Review items can be resolved while viewing the original Gmail message.
-- [ ] An immediate replay makes no model calls for already processed message IDs.
-- [ ] No credentials, real message contents, or database files enter version control.
-- [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
+- [x] The first sync retrieves all inbox emails with a job word received on or after 2026-10-08, and none earlier.
+- [x] The result identifies status-update, not-application, review, skipped, and failed message IDs.
+- [x] The user checks the application list against their own knowledge of their applications.
+- [x] Review items can be resolved while viewing the original Gmail message.
+- [x] An immediate replay makes no model calls for already processed message IDs.
+- [x] No credentials, real message contents, or database files enter version control.
+- [x] The user records a `proceed`, `revise`, or `stop` decision with reasons.
+
+### J0.5-3 decision
+
+`proceed`, recorded by the user on 2026-10-24 after the first sync, the skim list, and the resolution of every review item. The configuration was the J0-5 `proceed` configuration unchanged: `qwen3.5:4b-q4_K_M`, prompt `jobs-v0.2`, and the missing-value guard.
+
+The backlog ran as one `jobs-sync --limit 200` over the 191 messages with a job word received since the start. It recorded 49 status updates, 126 not applications, and 6 review items, and created 42 applications and advanced 7. 10 messages failed, all on their `raw` fetch with `HTTP 403 rateLimit`, a per-user rate limit that Gmail reports as a 403 rather than a 429. As the contract's [inbox retrieval](job-tracker-contract.md#1-inbox-retrieval) and [processing rules](job-tracker-contract.md#9-processing-failure-and-idempotency) specify, each failure was that message's alone, nothing was recorded for it, and the next run found it again: a second `jobs-sync` processed all 10 cleanly, as 2 status updates, 6 not applications, and 2 review items. A following run processed 1 newly arrived status update, and an immediate replay found 192 messages already processed and made no model calls. The earliest processed message was received 12 seconds after the start.
+
+Against the acceptance criteria:
+
+- **Skim list.** The two batches listed 44 job-related `not_application` emails: job alerts and recommendations, job-listing closures, multi-application digests, an interview survey, an interview recap, and job-board marketing. None was found to be a missed status update, so the silent miss the J0-5 decision warned about did not recur here.
+- **Review.** 8 items: 7 analyser items, where the email lacked the company, the job title, or a mappable status, 2 of them through the missing-value guard, and 1 likely match, a longer variant of an existing job title. They were resolved as 6 attaches, 1 create, and 1 not an application, saving 2 confirmed aliases. 4 of the attaches were acknowledgement and assessment emails for one application whose hiring-system and assessment emails name no title.
+- **Application list.** 44 applications: 31 applied, 4 viewed, 3 interview, and 6 rejected, with 11 linked to more than one email. The user reported no mismatch. Applications made before the start appear only when a later email reports their status, so job-listing closures and digests that name earlier applications add nothing, as the [MVP](MVP.md#gmail-retrieval) start date intends.
+
+The user chose `proceed` on this evidence: the skim list hid no missed status update, every review item could be resolved, the list showed no mismatch, and the rate-limited fetches recovered on the next run without intervention.
+
+Follow-up: when the missing-value guard replaces an output whose job title is the placeholder `null`, the extracted job title is that placeholder, and `jobs-review`'s attach to another application (`t`) offers it as the default job title. Accepting the default saves a `null` title as a confirmed alias. In this review the application's own title was used instead.
 
 ## Version 0.5 completion gate
 
-Version 0.5 is complete when both issues meet their acceptance criteria and the user records `proceed`.
+**Status:** `complete` (2026-10-24. All three issues met their acceptance criteria, and the user recorded `proceed` in [J0.5-3](#j05-3-decision).)
+
+Version 0.5 is complete when all three issues meet their acceptance criteria and the user records `proceed`.
 
 ## Scope changes
 
