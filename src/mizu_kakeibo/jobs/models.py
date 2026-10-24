@@ -138,6 +138,16 @@ def _is_placeholder(value: Any, key: Callable[[str], str]) -> bool:
     )
 
 
+def present_company(value: Any) -> str | None:
+    """The company, or None when the missing-value guard treats it as missing."""
+    return None if _is_placeholder(value, company_key) else value
+
+
+def present_job_title(value: Any) -> str | None:
+    """The job title, or None when the missing-value guard treats it as missing."""
+    return None if _is_placeholder(value, job_title_key) else value
+
+
 def review_missing_values(content: str) -> JobAnalysisOutput | None:
     """Send an output to review when it reports a missing value without choosing needs_review.
 

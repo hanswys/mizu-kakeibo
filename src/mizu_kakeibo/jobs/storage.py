@@ -23,7 +23,13 @@ from ..ollama import RuntimeMetadata
 from ..scheduled import MALAYSIA
 from ..storage import AlreadyProcessedError
 from .constants import JOB_ANALYSIS_INPUT_CONTRACT
-from .models import JobAnalysisOutput, JobApplication, JobStatus
+from .models import (
+    JobAnalysisOutput,
+    JobApplication,
+    JobStatus,
+    present_company,
+    present_job_title,
+)
 from .tracker import (
     Application,
     KeyPair,
@@ -640,8 +646,8 @@ class JobStore:
                 reason=row["reason"],
                 missing_fields=json.loads(row["missing_fields_json"]),
                 extracted=Extracted(
-                    row["company"],
-                    row["job_title"],
+                    present_company(row["company"]),
+                    present_job_title(row["job_title"]),
                     JobStatus(row["status"]) if row["status"] else None,
                 ),
                 suggested=suggested.get(row["suggested_application_id"]),

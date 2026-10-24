@@ -274,7 +274,7 @@ def test_the_guard_and_the_grounding_check_keep_the_original_output(store) -> No
         "decision": "needs_review",
         "reason": MISSING_VALUE_REASON,
         "missing_fields_json": '["company"]',
-        "company": "unknown",
+        "company": None,
         "job_title": "Data Analyst",
         "status": "applied",
         "missing_value_replaced": 1,
@@ -291,6 +291,42 @@ def test_the_guard_and_the_grounding_check_keep_the_original_output(store) -> No
         "Data Analyst",
         "Backend Engineer",
     ]
+
+
+@pytest.mark.parametrize(
+    ("company", "job_title", "stored"),
+    [
+        ("Lumen Works", "null", ("Lumen Works", None)),
+        ("NULL", "Backend Engineer", (None, "Backend Engineer")),
+        (" n/a ", "None", (None, None)),
+        ("--", 7, (None, None)),
+    ],
+)
+def test_names_the_guard_treats_as_missing_are_stored_as_missing(
+    store, company, job_title, stored
+) -> None:
+    guarded = message("m1", 1, "Lumen Works: Backend Engineer received")
+    raw = update(company, job_title, "applied")
+
+    run(store, {guarded.subject: raw}, guarded)
+
+    [analysis] = rows(store, "SELECT company, job_title, status, original_output FROM analyses")
+    assert (analysis["company"], analysis["job_title"], analysis["status"]) == (*stored, "applied")
+    assert analysis["original_output"] == raw
+    [item] = store.list_review_items()
+    assert (item.extracted.company, item.extracted.job_title) == stored
+
+
+def test_a_placeholder_stored_before_the_fix_is_read_as_missing(store) -> None:
+    guarded = message("m1", 1, "Lumen Works: Backend Engineer received")
+    run(store, {guarded.subject: update("Lumen Works", "", "applied")}, guarded)
+    with store.connect() as connection:
+        connection.execute("UPDATE analyses SET company = 'Unknown', job_title = 'null'")
+
+    [item] = store.list_review_items()
+
+    assert (item.extracted.company, item.extracted.job_title) == (None, None)
+    assert item.extracted.status is APPLIED
 
 
 @pytest.mark.parametrize("answer", ["not json", other("status_update"), TIMEOUT])
