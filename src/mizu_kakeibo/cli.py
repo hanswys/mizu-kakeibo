@@ -31,6 +31,7 @@ from .jobs.evaluation import load_dataset as load_jobs_dataset
 from .jobs.processor import JobProcessingResult, JobProcessor, parse_job_message, run_report
 from .jobs.review import application_list
 from .jobs.review import review as review_jobs
+from .jobs.skim import render_skim, skim, skim_list
 from .jobs.storage import JOBS_LIVE_DATABASE, JobReviewError, JobStore, read_counts
 from .models import AnalysisDecision, InboxMessage, Transaction
 from .normalization import NormalizationError, normalize_gmail_message, parse_inbox_message
@@ -95,12 +96,13 @@ def _today() -> date:
     return datetime.now(MALAYSIA).date()
 
 
-def _jobs_row(database: Path) -> str | None:
+def _jobs_row(database: Path, today: date) -> str | None:
     """The job tracker's `status` row, or None before its first run has created a database."""
     if not database.is_file():
         return None
+    week = parse_period("week", today)
     try:
-        return job_counts(*read_counts(database))
+        return job_counts(*read_counts(database), len(skim_list(database, week.start, today)))
     except sqlite3.Error:
         return "could not read the job database"
 
@@ -117,7 +119,7 @@ def command_status(args: argparse.Namespace) -> int:
             len(store.list_review_items()),
             last_sync(args.database.parent / "scheduled.log"),
             update_commands(),
-            _jobs_row(args.jobs_database),
+            _jobs_row(args.jobs_database, today),
         )
     )
     return 0
@@ -386,13 +388,18 @@ def command_jobs_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _existing_job_store(args: argparse.Namespace) -> JobStore:
-    """Open the job tracker's store for a command that only reads it."""
+def _existing_job_database(args: argparse.Namespace) -> Path:
+    """The job tracker's database for a command that only reads it, which must exist."""
     if not args.database.is_file():
         raise FileNotFoundError(
             f"no job-tracker database at {args.database}; pass --database or run jobs-process"
         )
-    return JobStore(args.database)
+    return args.database
+
+
+def _existing_job_store(args: argparse.Namespace) -> JobStore:
+    """Open the job tracker's store for a command that only reads it."""
+    return JobStore(_existing_job_database(args))
 
 
 def command_jobs_process(args: argparse.Namespace) -> int:
@@ -502,6 +509,16 @@ def command_jobs_review(args: argparse.Namespace) -> int:
 
 def command_jobs_list(args: argparse.Namespace) -> int:
     sys.stdout.write(application_list(_existing_job_store(args), Console().width()))
+    return 0
+
+
+def command_jobs_skim(args: argparse.Namespace) -> int:
+    period = parse_period(args.period, _today())
+    database = _existing_job_database(args)
+    if sys.stdout.isatty():
+        return skim(database, period, Console())
+    messages = skim_list(database, period.start, period.end)
+    sys.stdout.write(render_skim(period, messages, Console().width()) + "\n")
     return 0
 
 
@@ -723,6 +740,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     jobs_list.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
     jobs_list.set_defaults(handler=command_jobs_list)
+
+    jobs_skim = subparsers.add_parser(
+        "jobs-skim",
+        help="list a period's job-related emails that were not status updates, to skim",
+    )
+    jobs_skim.add_argument(
+        "period",
+        nargs="?",
+        default="week",
+        help="today, yesterday, week, last-week, month, last-month, year, "
+        "or a date as YYYY-MM-DD, YYYY-MM, or YYYY (default: week)",
+    )
+    jobs_skim.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
+    jobs_skim.set_defaults(handler=command_jobs_skim)
 
     filter_new = subparsers.add_parser(
         "filter-new", help="filter Gmail search IDs before full-message retrieval"

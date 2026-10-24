@@ -297,6 +297,10 @@ The run result also lists, under `skim`, each message of the run decided `not_ap
 
 The list is in the run's local result only; it changes nothing and is not stored, apart from its message IDs in a [scheduled job step's](#scheduled-job-step) run record.
 
+`jobs-skim [period]` lists the same messages for a period, worked out from the stored decisions: each message whose active analysis is `not_application` and that looks job-related, received in the period in Malaysia time. A message sent to review and then resolved as `not_application` is not listed, because the user has already read it. The period is one `spend` accepts, as the expense contract's [periods](../expenses/inbox-expense-contract.md#10-spending-summaries) define, and defaults to `week`. It prints the period, then one line per message, oldest first and then by message ID, with its received date, its sender's display name or else its address, and its subject, shortened to fit one line, then the number of messages; a period with none prints `Nothing to skim.` When standard input and standard output are both terminals and the list is not empty, the lines are numbered and it asks for a number to open that message's [Gmail link](../expenses/inbox-expense-contract.md#7-persistence-contract) with `open`, again and again, until Enter, `q`, the end of input, or an interrupt. It reads the database as `status` does, read-only and without the run lock, so it records nothing and creates no database; without one it stops with an error.
+
+The expense app's `status` counts the messages that `jobs-skim week` would list up to today, as its contract's [`status`](../expenses/inbox-expense-contract.md#10-spending-summaries) describes.
+
 ### Application list
 
 `jobs-list` prints the applications, newest latest update first and then by ID, with their latest update date, current status, company, and job title as first written. It also counts the applications and the unresolved review items.

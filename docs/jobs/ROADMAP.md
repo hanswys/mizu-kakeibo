@@ -321,7 +321,7 @@ Split `scheduled-sync` into shared checks and two steps. The gates, `caffeinate`
 
 **Type:** AFK
 
-**Status:** `planned`
+**Status:** `complete` (2026-10-25. Built and tested with fictional fixtures, then run against the live job database: `jobs-skim week` and `status` changed none of its files, and `status` without a job database printed the same bytes as before. When nothing waits to be skimmed, the `Jobs` row is unchanged; the command list gains a `jobs-skim` line whenever the job database exists, as the next criterion asks. Everyday use is checked in J1-3.)
 
 **Blocked by:** J0.5-3 with a `proceed` decision
 
@@ -331,11 +331,11 @@ Add `jobs-skim`, which lists the [skim list](MVP.md#skim-list) for a period from
 
 ### Acceptance criteria
 
-- [ ] `jobs-skim [period]` lists, oldest first, each `not_application` message received in the period that meets the skim rules, with its received date, sender, and subject. The default is `week`, and it accepts the periods `spend` accepts.
-- [ ] In a terminal, a numbered email can be opened in Gmail. Nothing is recorded, and the list is the same before and after.
-- [ ] The `status` Jobs row adds `· N to skim this week` when N is above zero. It still reads the database read-only without the run lock, and its output is unchanged when N is zero or there is no job database.
-- [ ] `status` lists `jobs-skim` with the other job commands.
-- [ ] Tests use fictional fixtures only. The job user guide replaces "glance at `skim` after each sync" with `jobs-skim`.
+- [x] `jobs-skim [period]` lists, oldest first, each `not_application` message received in the period that meets the skim rules, with its received date, sender, and subject. The default is `week`, and it accepts the periods `spend` accepts.
+- [x] In a terminal, a numbered email can be opened in Gmail. Nothing is recorded, and the list is the same before and after.
+- [x] The `status` Jobs row adds `· N to skim this week` when N is above zero. It still reads the database read-only without the run lock, and its output is unchanged when N is zero or there is no job database.
+- [x] `status` lists `jobs-skim` with the other job commands.
+- [x] Tests use fictional fixtures only. The job user guide replaces "glance at `skim` after each sync" with `jobs-skim`.
 
 ## Issue J1-3 Verify the scheduled job step in everyday use
 

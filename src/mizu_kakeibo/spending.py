@@ -26,6 +26,7 @@ _EVERYDAY_COMMANDS = (
 _JOB_COMMANDS = (
     ("mizu-kakeibo jobs-sync", "read new job-application emails now"),
     ("mizu-kakeibo jobs-review", "resolve the job emails waiting for review"),
+    ("mizu-kakeibo jobs-skim", "this week's emails to skim for a missed update"),
     ("mizu-kakeibo jobs-list", "every job application with its current status"),
 )
 
@@ -216,9 +217,10 @@ def last_sync(log: Path) -> str | None:
     return None
 
 
-def job_counts(applications: int, review_count: int) -> str:
-    """Describe the job tracker's applications and review items for the `Jobs` row."""
-    return f"{applications} application{'s' * (applications != 1)} · {review_count} to review"
+def job_counts(applications: int, review_count: int, skim_count: int = 0) -> str:
+    """Describe the job tracker's applications, review items, and this week's skim list."""
+    row = f"{applications} application{'s' * (applications != 1)} · {review_count} to review"
+    return row + (f" · {skim_count} to skim this week" if skim_count else "")
 
 
 def render_status(
