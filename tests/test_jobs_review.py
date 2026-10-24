@@ -111,6 +111,26 @@ def test_attaching_to_another_application_picks_it_by_number(store) -> None:
     assert statuses(store)[("Lumen Works", "Backend Engineer")] is JobStatus.INTERVIEW
 
 
+def test_attaching_never_offers_a_placeholder_name(store) -> None:
+    # The guard replaced this output because its job title is a placeholder.
+    guarded = message("a5", 5, "Lumen Works: your application was viewed")
+    with ScriptedOllama({guarded.subject: update("Lumen Works", "null", "viewed")}).analyser() as (
+        analyser
+    ):
+        JobProcessor(store, analyser).process_batch([guarded])
+    console = FakeConsole(["3", "t", "2", "", "", "", "y"])
+
+    review(store, console)
+
+    assert "Extracted  Lumen Works · ? · viewed" in console.text
+    assert "Job title [Backend Engineer]: " in console.prompts
+    assert "null" not in "".join(console.prompts)
+    assert "becomes another name" not in console.text
+    assert statuses(store)[("Lumen Works", "Backend Engineer")] is JobStatus.VIEWED
+    with store.connect() as connection:
+        assert connection.execute("SELECT count(*) FROM aliases").fetchone()[0] == 0
+
+
 def test_a_new_application_is_refused_for_names_that_exist(store) -> None:
     console = FakeConsole(
         [

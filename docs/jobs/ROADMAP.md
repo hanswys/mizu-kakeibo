@@ -276,7 +276,7 @@ Against the acceptance criteria:
 
 The user chose `proceed` on this evidence: the skim list hid no missed status update, every review item could be resolved, the list showed no mismatch, and the rate-limited fetches recovered on the next run without intervention.
 
-Follow-up: when the missing-value guard replaces an output whose job title is the placeholder `null`, the extracted job title is that placeholder, and `jobs-review`'s attach to another application (`t`) offers it as the default job title. Accepting the default saves a `null` title as a confirmed alias. In this review the application's own title was used instead.
+Follow-up: when the missing-value guard replaces an output whose job title is the placeholder `null`, the extracted job title is that placeholder, and `jobs-review`'s attach to another application (`t`) offers it as the default job title. Accepting the default saves a `null` title as a confirmed alias. In this review the application's own title was used instead. Fixed 2026-10-25: a company or job title that the guard treats as missing is now recorded as absent, and review treats any such stored value as absent, so it is never a default. The original output still keeps the raw value. Existing live rows were left as they are, because every live review item was already resolved and no live alias uses a placeholder.
 
 ## Version 0.5 completion gate
 

@@ -35,6 +35,8 @@ from .models import (
     JobMissingField,
     JobStatus,
     ground,
+    present_company,
+    present_job_title,
 )
 from .names import fold_text
 from .storage import AnalysisRecord, Extracted, JobStore
@@ -85,7 +87,7 @@ def _extracted(output: JobAnalysisOutput) -> Extracted:
 
 
 def _raw_extracted(content: str) -> Extracted:
-    """Read whatever names and status a raw output that the guard replaced still carries."""
+    """Read the names and status a replaced raw output still carries, leaving out placeholders."""
     application = json.loads(content).get("application")
     if not isinstance(application, dict):
         return Extracted()
@@ -93,8 +95,8 @@ def _raw_extracted(content: str) -> Extracted:
         application.get(name) for name in ("company", "job_title", "status")
     )
     return Extracted(
-        company if isinstance(company, str) and company.strip() else None,
-        job_title if isinstance(job_title, str) and job_title.strip() else None,
+        present_company(company),
+        present_job_title(job_title),
         JobStatus(status) if status in {item.value for item in JobStatus} else None,
     )
 

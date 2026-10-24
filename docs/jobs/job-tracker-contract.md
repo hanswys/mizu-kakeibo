@@ -166,7 +166,7 @@ A small model sometimes reports a missing value without choosing `needs_review`.
 - `missing_fields` is not empty.
 - The decision is `status_update`, and its company or job title is not a string, is empty after trimming, has an empty [normalized key](#5-name-normalization), or is `null`, `none`, `n/a`, or `unknown`, ignoring case.
 
-The guard replaces the decision with `needs_review`, a null application, the fixed reason `Analyser reported a missing value`, and `missing_fields` holding the listed fields followed by the empty company or job title if not already listed. The result is then validated as usual, so an output that still breaks an invariant, such as an unknown missing field, stays an invalid output. The original output is kept in the analysis record. Like the grounding check, the guard errs toward review.
+The guard replaces the decision with `needs_review`, a null application, the fixed reason `Analyser reported a missing value`, and `missing_fields` holding the listed fields followed by the empty company or job title if not already listed. The result is then validated as usual, so an output that still breaks an invariant, such as an unknown missing field, stays an invalid output. The original output is kept in the analysis record. A company or job title that the guard treats as missing is recorded as absent among the extracted values, so it is never a review default. Like the grounding check, the guard errs toward review.
 
 ### Grounding check
 
@@ -241,7 +241,7 @@ A review item has one cause: `analyser` for a `needs_review` decision, `likely_m
 | `s` | skip the item, leaving it unresolved |
 | `q` | quit, saving nothing for the current item |
 
-Every action shows what it will save and asks for confirmation. A status may be typed whole or by its first letter. A refused resolution saves nothing, explains why, and asks for another key; a refused match names the likely application, so the user can attach with `t` or create with `c`. An item resolved elsewhere meanwhile is passed over. Message text is stripped of control characters and bidirectional overrides before it is shown. Without an interactive terminal, `jobs-review` prints the list and asks nothing. Extracted values are the company, job title, and status the analyser returned, including those of an output that the missing-value guard or the grounding check replaced.
+Every action shows what it will save and asks for confirmation. A status may be typed whole or by its first letter. A refused resolution saves nothing, explains why, and asks for another key; a refused match names the likely application, so the user can attach with `t` or create with `c`. An item resolved elsewhere meanwhile is passed over. Message text is stripped of control characters and bidirectional overrides before it is shown. Without an interactive terminal, `jobs-review` prints the list and asks nothing. Extracted values are the company, job title, and status the analyser returned, including those of an output that the missing-value guard or the grounding check replaced. A company or job title that the guard treats as missing counts as absent, even when an earlier analysis recorded it, so it shows as `?` and is never a default.
 
 The resolutions:
 
@@ -294,7 +294,7 @@ The job tracker keeps one private SQLite database, separate from the expense dat
 The database holds these records:
 
 - **Message:** source provider, Gmail message ID, thread ID, and the complete envelope. Unique per source.
-- **Analysis:** source, revision and whether it is active, decision, sanitized reason, missing fields, company, job title, and status as the analyser returned them, whether the missing-value guard or the grounding check replaced the decision, the original output when either replaced it, the inbox-message, analyser-input, and analyser-output contract versions, Ollama version, model digest, prompt version, runtime options, and processing time. One active analysis per source.
+- **Analysis:** source, revision and whether it is active, decision, sanitized reason, missing fields, company, job title, and status as the analyser returned them, with a company or job title that the missing-value guard treats as missing recorded as absent, whether the missing-value guard or the grounding check replaced the decision, the original output when either replaced it, the inbox-message, analyser-input, and analyser-output contract versions, Ollama version, model digest, prompt version, runtime options, and processing time. One active analysis per source.
 - **Analysis failure:** source, failure count, and last failure time.
 - **Application:** ID, company and job title as first written, company key and job title key, current status, latest update date, and creation time. The key pair is unique.
 - **Alias:** application, company and job title as written, their keys, and confirmation time. The key pair is unique and differs from every application's own pair.
