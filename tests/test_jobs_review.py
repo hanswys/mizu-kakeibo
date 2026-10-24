@@ -284,7 +284,7 @@ def test_the_expense_lock_does_not_block_a_job_run(tmp_path, monkeypatch, capsys
     assert json.loads(capsys.readouterr().out)["summary"]["status_update"] == ["a2"]
 
 
-@pytest.mark.parametrize("command", ["jobs-list", "jobs-review"])
+@pytest.mark.parametrize("command", ["jobs-list", "jobs-review", "jobs-skim"])
 def test_reading_commands_need_an_existing_database(command, capsys) -> None:
     with pytest.raises(SystemExit) as exit:
         cli.main([command])

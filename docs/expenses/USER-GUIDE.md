@@ -40,7 +40,7 @@ Mizu Kakeibo · Sun 18 Oct 2026
   Last sync   Sun 18 Oct 01:38 · 1 expense, 0 to review, 0 failed
 ```
 
-Once the job tracker has synced, a `Jobs` line follows with its applications and the job emails waiting for review, and its commands are listed after the expense ones; see the [job tracker guide](../jobs/USER-GUIDE.md#checking-your-applications).
+Once the job tracker has synced, a `Jobs` line follows with its applications, the job emails waiting for review, and any job emails to skim this week, and its commands are listed after the expense ones; see the [job tracker guide](../jobs/USER-GUIDE.md#checking-your-applications).
 
 To see the expenses behind a total, use `mizu-kakeibo spend` with a period. Add `--by merchant` to total each merchant instead. Without `--by merchant`, the list is numbered so you can [fix an expense](#fixing-a-logged-expense).
 

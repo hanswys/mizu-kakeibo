@@ -194,15 +194,15 @@ class JobProcessor:
         return [self.process_one(message, reevaluate=reevaluate) for message in messages]
 
 
-def looks_job_related(message: InboxMessage) -> bool:
+def looks_job_related(sender: str, subject: str) -> bool:
     """Whether a not_application message belongs on the skim list (contract §9)."""
-    address = parseaddr(message.sender)[1].strip().lower()
+    address = parseaddr(sender)[1].strip().lower()
     domain = address.rpartition("@")[2]
     if address in SKIM_SENDER_ADDRESSES or any(
         domain == known or domain.endswith(f".{known}") for known in SKIM_SENDER_DOMAINS
     ):
         return True
-    return not SKIM_SUBJECT_WORDS.isdisjoint(fold_text(message.subject).split())
+    return not SKIM_SUBJECT_WORDS.isdisjoint(fold_text(subject).split())
 
 
 def run_report(
@@ -219,11 +219,10 @@ def run_report(
     for result in results:
         summary[result.group or result.status.value].append(result.message_id)
     effects = Counter(result.effect for result in results if result.effect is not None)
-    skim = [
-        messages[result.message_id]
-        for result in results
-        if result.group == "not_application" and looks_job_related(messages[result.message_id])
+    decided = [
+        messages[result.message_id] for result in results if result.group == "not_application"
     ]
+    skim = [message for message in decided if looks_job_related(message.sender, message.subject)]
     return {
         "summary": summary,
         "applications": {effect.value: effects[effect] for effect in LinkEffect},

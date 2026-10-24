@@ -396,14 +396,17 @@ class _Tracker:
             self.refresh(application_id, status)
 
 
-def read_counts(database_path: Path) -> tuple[int, int]:
-    """Count the applications and the unresolved review items, writing nothing.
-
-    The database is opened read-only, so a missing one is never created, and without the run
-    lock: in WAL mode a reader sees the last commit and never waits for a run.
+def _read_only(database_path: Path) -> sqlite3.Connection:
+    """Open the database read-only, so a missing one is never created, and without the run lock:
+    in WAL mode a reader sees the last commit and never waits for a run.
     """
     uri = f"{Path(database_path).resolve().as_uri()}?mode=ro"
-    connection = sqlite3.connect(uri, uri=True, timeout=30)
+    return sqlite3.connect(uri, uri=True, timeout=30)
+
+
+def read_counts(database_path: Path) -> tuple[int, int]:
+    """Count the applications and the unresolved review items, writing nothing."""
+    connection = _read_only(database_path)
     try:
         applications = connection.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
         review = connection.execute(
@@ -414,6 +417,48 @@ def read_counts(database_path: Path) -> tuple[int, int]:
     finally:
         connection.close()
     return applications, review
+
+
+@dataclass(frozen=True)
+class NotApplication:
+    """A message whose active analysis is `not_application`, as the skim list reads it."""
+
+    provider: str
+    message_id: str
+    thread_id: str | None
+    received_at: datetime
+    sender: str
+    subject: str
+
+
+def read_not_applications(database_path: Path) -> list[NotApplication]:
+    """Read the `not_application` messages, oldest first, writing nothing."""
+    connection = _read_only(database_path)
+    try:
+        rows = connection.execute(
+            "SELECT m.provider, m.message_id, m.thread_id, "
+            "json_extract(m.envelope_json, '$.received_at'), "
+            "json_extract(m.envelope_json, '$.sender'), "
+            "json_extract(m.envelope_json, '$.subject') "
+            "FROM analyses a JOIN messages m "
+            "ON m.provider = a.provider AND m.message_id = a.message_id "
+            "WHERE a.active = 1 AND a.decision = 'not_application'"
+        ).fetchall()
+    finally:
+        connection.close()
+    # Read only the fields the list shows, not every stored envelope's text.
+    messages = [
+        NotApplication(
+            provider,
+            message_id,
+            thread_id,
+            datetime.fromisoformat(received_at.replace("Z", "+00:00")),
+            sender,
+            subject,
+        )
+        for provider, message_id, thread_id, received_at, sender, subject in rows
+    ]
+    return sorted(messages, key=lambda message: (message.received_at, message.message_id))
 
 
 class JobStore:

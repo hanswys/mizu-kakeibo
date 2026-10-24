@@ -36,7 +36,7 @@ It prints its result as JSON:
 | `applications` | How many applications this sync created, advanced, reopened, or left unchanged |
 | `skim` | Job-related emails decided as not an application, by sender and subject |
 
-Glance at `skim` after each sync. It lists emails from LinkedIn, Jobstreet, and hiring systems, or with an application or interview in the subject, that the tracker decided report no status. Those are not reviewed, so a missed update would otherwise go unnoticed. If one is a real status update, ask Claude Code in this repository to re-evaluate it.
+Instead of reading `skim`, use [`jobs-skim`](#skimming-for-a-missed-update), which lists the same emails for the whole week.
 
 Only one job sync runs at a time, by hand or hourly; another one started meanwhile prints `locked` and does nothing. A sync by hand never shows a notification.
 
@@ -70,8 +70,10 @@ Once the first sync has run, `mizu-kakeibo` on its own adds a `Jobs` line under 
 
 ```text
   Last sync   Fri 23 Oct 14:00 · 1 expense, 0 to review, 0 failed
-  Jobs        2 applications · 1 to review
+  Jobs        2 applications · 1 to review · 3 to skim this week
 ```
+
+The `to skim` count appears only when this week has emails to [skim](#skimming-for-a-missed-update).
 
 To see the applications, run `mizu-kakeibo jobs-list`. The most recently updated come first:
 
@@ -86,6 +88,25 @@ To see the applications, run `mizu-kakeibo jobs-list`. The most recently updated
 ```
 
 The company and job title are shown as first written. A status only moves forward, from applied to viewed to interview to offered or rejected, so a late or repeated email does not move an application back. Applying again after a rejection reopens it as applied.
+
+## Skimming for a missed update
+
+Run `mizu-kakeibo jobs-skim`. It lists this week's emails from LinkedIn, Jobstreet, and hiring systems, or with an application or interview in the subject, that the tracker decided report no status, oldest first:
+
+```text
+This week, Mon 19 Oct – Sun 25 Oct 2026
+
+  1  Mon 19 Oct  LinkedIn        Analyst roles for you
+  2  Wed 21 Oct  Example Hiring  Hiring update
+
+  2 emails to skim
+
+Number to open in Gmail, or Enter or q to quit:
+```
+
+Those emails are not reviewed, so a missed status update would otherwise go unnoticed. Type a number to open that email in Gmail, as often as you like, and press Enter to finish. Nothing is recorded. If one is a real status update, ask Claude Code in this repository to re-evaluate it.
+
+It takes the same periods as `mizu-kakeibo spend`, such as `jobs-skim last-week` or `jobs-skim 2026-10`.
 
 ## Reviewing an email
 
@@ -130,7 +151,7 @@ When you attach an email whose company or job title is written differently, such
 | --- | --- |
 | The Gmail sign-in has expired or was removed | Run `mizu-kakeibo gmail-sign-in --replace` and approve read-only access in the browser. The sign-in is shared, so this fixes the expense sync too. |
 | An error about Ollama | Check that Ollama is running, as for the expense app; see the [README](../../README.md#setup) |
-| `no job-tracker database` from `jobs-list` or `jobs-review` | Run `mizu-kakeibo jobs-sync` first; the first sync creates it |
+| `no job-tracker database` from `jobs-list`, `jobs-review`, or `jobs-skim` | Run `mizu-kakeibo jobs-sync` first; the first sync creates it |
 | A `Job sync stopped` notification | Usually nothing; it tries again next hour. If it repeats, run `mizu-kakeibo jobs-sync` to see the error, or look at `~/mizu-kakeibo-private/live/launchd.err.log` after an unexpected error. |
 | `Jobs  could not read the job database` in the summary | Run `mizu-kakeibo` again. If it stays, ask Claude Code in this repository to investigate. |
 

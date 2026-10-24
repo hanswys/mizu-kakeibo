@@ -528,7 +528,7 @@ def test_the_job_database_shares_no_table_with_the_expense_database(tmp_path, st
     ],
 )
 def test_the_skim_list_takes_job_related_senders_and_subjects(sender, subject, listed) -> None:
-    assert looks_job_related(message("m1", 1, subject, sender=sender)) is listed
+    assert looks_job_related(sender, subject) is listed
 
 
 def test_the_run_result_lists_job_related_not_application_emails(store) -> None:
