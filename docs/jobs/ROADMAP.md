@@ -20,6 +20,9 @@ The roadmap samples real email layouts, settles the rules, tests parsing and mat
 | J0.5-1 | Build one repeatable local job-tracker run | AFK | J0-5 proceed gate |
 | J0.5-2 | Retrieve job messages through the Gmail API | AFK | J0.5-1 |
 | J0.5-3 | First sync and approval | HITL | J0.5-2 |
+| J1-1 | Run jobs-sync as a step of the hourly scheduled sync | AFK | J0.5-3 proceed gate |
+| J1-2 | List the emails to skim with jobs-skim | AFK | J0.5-3 proceed gate |
+| J1-3 | Verify the scheduled job step in everyday use | HITL | J1-1, J1-2 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -281,6 +284,84 @@ Follow-up: when the missing-value guard replaces an output whose job title is th
 
 Version 0.5 is complete when all three issues meet their acceptance criteria and the user records `proceed`.
 
+# Milestone Version 1 Sync on a Schedule
+
+## Version 1 outcome
+
+Sync the job tracker every hour without a manual run, as the MVP's [scheduled sync](MVP.md#scheduled-sync) describes. The job tracker becomes a second step of the expense app's `scheduled-sync`, sharing its LaunchAgent, gates, and sign-in and analyser checks but none of its processing state. Version 1 starts only after J0.5-3 records `proceed`, because a schedule repeats whatever `jobs-sync` does every hour.
+
+The scheduled run is shared infrastructure. J1-1 changes the expense app's [scheduled run](../expenses/inbox-expense-contract.md#9-scheduled-run), and J1-2 changes its [`status`](../expenses/inbox-expense-contract.md#10-spending-summaries) Jobs row. Both must leave expense behavior unchanged and update the expense contract in the same change.
+
+## Issue J1-1 Run jobs-sync as a step of the hourly scheduled sync
+
+**Type:** AFK
+
+**Status:** `planned`
+
+**Blocked by:** J0.5-3 with a `proceed` decision
+
+### What to build
+
+Split `scheduled-sync` into shared checks and two steps. The gates, `caffeinate`, sign-in check, and runtime check run once. Then the expense step runs under the expense run lock, and the job step runs `jobs-sync` under the job tracker's run lock with its default batch of 25. Each step is recorded on its own. Add the job notification. Define the job step in the job contract's [processing section](job-tracker-contract.md#9-processing-failure-and-idempotency), and update the expense contract's [scheduled run](../expenses/inbox-expense-contract.md#9-scheduled-run) for the shared checks and the step order.
+
+### Acceptance criteria
+
+- [ ] One LaunchAgent runs both steps every hour from 08:00 to 23:00, the expense step first. The gates, `caffeinate`, sign-in check, and runtime check run once per hour.
+- [ ] A held expense lock skips only the expense step, and a held job lock skips only the job step. Each is recorded as `locked`.
+- [ ] A failure or unexpected error in either step does not stop the other. A failed sign-in or runtime check stops both, with one expense failure dialog as today.
+- [ ] The job step selects at most 25 new messages, oldest first, defers the rest, and finds earlier failures through its search from the start.
+- [ ] The job step writes its own run record and log line under `~/mizu-kakeibo-private/jobs/live/`, with message IDs, counts, the skim message IDs, and sanitized errors only, and deletes them after 90 days. The expense run record, `scheduled.log`, and the `status` last-sync line are unchanged.
+- [ ] After a job step that created, advanced, or reopened an application, stored a review item, or failed a message, a notification titled for the job tracker shows the counts of updates, review items, and failures. A step with only unchanged links or `not_application` decisions shows nothing, and no dialog opens.
+- [ ] A job step that stops before processing because of its own failure shows one notification saying so, at most once a day in Malaysia time.
+- [ ] A manual `jobs-sync` and a manual `sync` behave as before and never notify.
+- [ ] Expense scheduled-run tests pass unchanged, apart from the step split. New tests cover each lock held, each step failing, the shared checks failing, and the job notification rules, with a fake system and Gmail client.
+- [ ] The job [user guide](USER-GUIDE.md) no longer says that nothing runs by itself, and the expense user guide mentions the job step.
+
+## Issue J1-2 List the emails to skim with jobs-skim
+
+**Type:** AFK
+
+**Status:** `planned`
+
+**Blocked by:** J0.5-3 with a `proceed` decision
+
+### What to build
+
+Add `jobs-skim`, which lists the [skim list](MVP.md#skim-list) for a period from the stored decisions, and add a count of this week's emails to skim to the `status` Jobs row. Define both in the job contract beside the [skim list rules](job-tracker-contract.md#skim-list), and update the expense contract's `status` Jobs row. It does not depend on J1-1, so the two can be built at once.
+
+### Acceptance criteria
+
+- [ ] `jobs-skim [period]` lists, oldest first, each `not_application` message received in the period that meets the skim rules, with its received date, sender, and subject. The default is `week`, and it accepts the periods `spend` accepts.
+- [ ] In a terminal, a numbered email can be opened in Gmail. Nothing is recorded, and the list is the same before and after.
+- [ ] The `status` Jobs row adds `· N to skim this week` when N is above zero. It still reads the database read-only without the run lock, and its output is unchanged when N is zero or there is no job database.
+- [ ] `status` lists `jobs-skim` with the other job commands.
+- [ ] Tests use fictional fixtures only. The job user guide replaces "glance at `skim` after each sync" with `jobs-skim`.
+
+## Issue J1-3 Verify the scheduled job step in everyday use
+
+**Type:** HITL
+
+**Status:** `planned`
+
+**Blocked by:** J1-1, J1-2
+
+### What to build
+
+Reinstall the command, reload the LaunchAgent if its arguments changed, and use it for a day. Finish with a `proceed`, `revise`, or `stop` decision.
+
+### Acceptance criteria
+
+- [ ] A scheduled hour runs both steps, and each step's record and log line are where J1-1 puts them.
+- [ ] A real job status update or review item shows the job notification, and an hour with none stays silent. A mock item may stand in when no real one arrives that day.
+- [ ] The expense step's notifications, dialogs, and `status` last-sync line are unchanged.
+- [ ] `jobs-skim` and the `status` count show the week's job-related non-applications.
+- [ ] No credentials, message contents, or database files enter version control.
+- [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
+
+## Version 1 completion gate
+
+Version 1 is complete when all three issues meet their acceptance criteria and the user records `proceed`.
+
 ## Scope changes
 
-Scheduled automation and sharing ingest or processing state with the expense app are excluded by the MVP. Add them here only after the MVP scope changes, as issues with dependencies and completion gates.
+Sharing ingest or processing state with the expense app is excluded by the MVP. Add it here only after the MVP scope changes, as issues with dependencies and completion gates. Scheduled automation was added as [Version 1](#milestone-version-1-sync-on-a-schedule) on 2026-10-23.

@@ -111,7 +111,7 @@ The backlog takes several runs. Each run processes the oldest new messages up to
 - Retrieve and normalize the full message using the same Gmail adapter and `inbox-message/v0` envelope as the [expense contract](../expenses/inbox-expense-contract.md).
 - Prefer the HTML alternative over the plain-text alternative when normalizing. Some LinkedIn notifications carry the job title and status only in their HTML part. The shared adapter offers this as an option that the expense app does not use, so expense behavior is unchanged.
 - Keep its own processed-message tracking and its own private database, separate from the expense app. The two apps do not share processing state.
-- Read Gmail through the Gmail API with the expense app's read-only Google sign-in rather than its own, as the user chose on 2026-10-16, in one sync command the user runs by hand, as the user chose on 2026-10-22. No agent or Gmail connector takes part. The sign-in is shared; searches and processing state are not.
+- Read Gmail through the Gmail API with the expense app's read-only Google sign-in rather than its own, as the user chose on 2026-10-16, in one sync command the user runs by hand, as the user chose on 2026-10-22. Version 1 also runs it every hour; see [Scheduled sync](#scheduled-sync). No agent or Gmail connector takes part. The sign-in is shared; searches and processing state are not.
 - Search the whole period since the first-run start on every run, so a message that failed in an earlier run is always found again.
 
 ### Status analyser
@@ -155,6 +155,25 @@ Review runs in the terminal, like the [expense review](../expenses/MVP.md#review
 
 Parsing and matching are tested before the tool is built. A private evaluation set of real inbox emails, with human ground truth, must cover LinkedIn, Jobstreet, and employer or hiring-system senders; every status; non-application emails, including job alerts and unrelated mail; emails missing a company or job title; several emails that update the same application; names written differently across emails for the same application; and a re-application after a rejection. No real offer email exists in the sampling window, so `offered` is covered by a few synthetic emails, clearly marked as synthetic. The [roadmap](ROADMAP.md) owns the evaluation gates.
 
+## Scheduled sync
+
+Version 1 syncs the job tracker every hour by itself, after the MVP is complete. The user chose this design on 2026-10-23, because a sync run by hand happens only when remembered, so status updates and review items wait.
+
+- Run as a second step of the expense app's [scheduled sync](../expenses/MVP.md#scheduled-sync), after its expense step, rather than as a separate schedule. Both apps then use the same hours, the same checks that the laptop is open, awake, and charged enough, and the same Gmail sign-in and analyser checks, and the analyser handles one app at a time. This is the second surface the two projects share, after the [spending summary](#application-list).
+- Keep processing separate. The job step has its own run lock, processed messages, database, and record of each run. A job sync started by hand that is still running skips the job step that hour, and does not stop the expense step. A failure in either step does not stop the other. Only a failed Gmail sign-in or analyser check stops both, because they are shared.
+- Select messages as a manual sync does: the oldest new messages, at most 25 per hour, with the rest deferred to the next hour. Every sync searches from the first-run start, so a message that failed is retried the next hour without special handling.
+- After a job step that created, advanced, or reopened an application, sent an email to review, or failed a message, show a notification of its own, separate from the expense notification, with the counts of updates, review items, and failures. A step with only duplicates or non-applications stays silent. No dialog opens. Job review can wait, so it is not interrupted for.
+- When the job step stops before reading any message because of its own failure, such as its Gmail search, show a notification saying so, at most once a day. A failed sign-in or analyser check is reported once, by the expense app's failure dialog.
+- Only a scheduled sync shows a job notification. A job sync started by hand shows its run result as before.
+- Keep a private record of each job step's message IDs, counts, and errors for 90 days, never message content, apart from the expense record. The expense app's last-sync line keeps showing the expense step.
+
+### Skim list
+
+Nobody reads a scheduled run's result, so the [skim list](#run-result) needs another place:
+
+- A `jobs-skim` command lists the job-related `not_application` emails received in a period, by date, sender, and subject. The default is this week, and it accepts the same periods as the expense app's spending command. It is worked out from the stored decisions, so nothing new is stored, and an email can be opened in Gmail from the list. A missed status update is still corrected by re-evaluation.
+- The `Jobs` row of the [spending summary](../expenses/MVP.md#spending-summaries) adds the number of emails to skim this week when there are any.
+
 ## Privacy
 
 The same rules as the expense project apply: no real email content, identifiers, or personal data may be committed to the repository. Samples of email structure must record field names, types, and layout only.
@@ -171,7 +190,7 @@ The MVP does not require:
 - Reporting, analytics, or visual dashboards beyond the application list.
 - Replying to or acting on emails.
 - Sharing ingest or processing state with the expense app.
-- Gmail labels or filters, Gmail push notifications, or scheduled automation.
+- Gmail labels or filters, Gmail push notifications, or scheduled automation. Version 1 adds the [scheduled sync](#scheduled-sync) after the MVP.
 - Hosted deployment, multi-user accounts, or native mobile applications.
 
 ## Definition of done
