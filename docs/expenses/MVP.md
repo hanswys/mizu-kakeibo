@@ -157,12 +157,16 @@ The user asked on 2026-10-25 for the ledger to point out what needs attention, n
 
 ### Unusual and duplicate charges
 
-- A logged expense is flagged as a possible duplicate when another expense has the same merchant, amount, and currency on the same day, and as unusual when its amount is far above what that merchant usually charges.
+- A logged expense is flagged as a possible duplicate when another expense has the same merchant, amount, and currency on the same day. Of the pair, only the one logged later is flagged, so a pair shows as one flag.
+- A logged expense is flagged as unusual when its merchant has at least three earlier charges in the same currency and its amount is more than twice their median. With fewer earlier charges, nothing is unusual.
 - A flag never changes or removes an expense. The expense is logged and counted as usual.
-- After a scheduled sync that flagged an expense, the sync's notification says so, as it does for review items.
-- The spending summary shows how many flagged expenses wait. For each, the user keeps it, which clears the flag, or marks it as not an expense, as in the spending list. A cleared flag does not return.
+- After a scheduled sync that flagged a new expense, the sync's notification adds how many it flagged. Flags alone never show a dialog.
+- The spending summary shows how many flagged expenses wait, and shows nothing about flags when none do.
+- Flags are checked in `mizu-kakeibo review`, after the review items, so one command still covers everything waiting. For each, the user keeps it, which clears the flag for good, marks it as not an expense, as in the spending list, or skips it for now.
+- Flags are worked out from the ledger each time, so correcting an expense rechecks it: fixing a wrong amount clears its flag, and a correction that makes it match another expense flags it.
 - The ledger records the transaction date, not its time, so a charge made twice within minutes is detected as twice on the same day.
-- Settled in the roadmap's triage: how many earlier charges a merchant needs before an amount can be unusual, and how far above its usual amount; whether flags are resolved in `mizu-kakeibo review` or a list of their own; and whether expenses logged before the feature are flagged.
+- Expenses logged before this feature are not flagged, so its first sync does not bring a burst of old flags. A [backfill](#history) is checked for duplicates but not for unusual amounts, because unusual amounts months old would bring a burst of flags on charges long settled, while a duplicate is still worth removing from the totals.
+- The user accepted these recommendations on 2026-10-25.
 
 ### History
 

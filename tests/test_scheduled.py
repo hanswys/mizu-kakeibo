@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import plistlib
 import shlex
+import sqlite3
 import subprocess
 from collections import defaultdict
 from contextlib import contextmanager
@@ -209,6 +210,7 @@ def test_a_scheduled_sync_writes_its_record_and_one_log_line(run, capsys) -> Non
     }
     assert record["counts"]["expense"] == 1
     assert record["counts"]["filtered"] == 1
+    assert record["flagged"] == []
     assert record["wake"] == {
         "lid_closed": False,
         "capabilities": ["CPU", "Graphics", "Audio", "Network"],
@@ -517,6 +519,32 @@ def test_a_sync_that_logged_an_expense_notifies_its_counts_without_a_dialog(run)
     assert run.system.dialogs == []
     assert run.system.shown_under_lock == 0
     assert not run.script.exists()
+
+
+def test_a_flagged_new_expense_is_counted_in_the_notification(run) -> None:
+    receipt = api_message("m4", "Example Store <receipts@example.invalid>", "Receipt", offset=3)
+    run.fake.messages["m4"] = receipt
+    assert run.main() == 0
+    [record] = run.records()
+    assert record["flagged"] == ["m4"]
+    assert record["notification"] is True
+    assert record["dialog"] is None
+    assert run.system.notifications == [
+        ("Checked 3 new messages", "2 expenses · 0 to review · 0 failed · 1 flagged")
+    ]
+    assert run.system.dialogs == []
+    # The flag stays out of the log line, and the job step is unchanged.
+    assert "flagged" not in run.log()[0]
+    [job_record] = run.job_records()
+    assert "flagged" not in job_record
+
+
+def test_a_full_sync_checks_its_expenses_for_duplicates_only(run, capsys) -> None:
+    assert cli.main(["sync", "--full", *run.argv[1:]]) == 0
+    capsys.readouterr()
+    with sqlite3.connect(run.live / "kakeibo.sqlite3") as connection:
+        checks = connection.execute("SELECT unusual FROM flag_checks").fetchall()
+    assert checks == [(0,), (0,)]
 
 
 def test_a_sync_with_only_non_expenses_is_silent(run) -> None:
