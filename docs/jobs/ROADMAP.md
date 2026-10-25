@@ -23,6 +23,11 @@ The roadmap samples real email layouts, settles the rules, tests parsing and mat
 | J1-1 | Run jobs-sync as a step of the hourly scheduled sync | AFK | J0.5-3 proceed gate |
 | J1-2 | List the emails to skim with jobs-skim | AFK | J0.5-3 proceed gate |
 | J1-3 | Verify the scheduled job step in everyday use | HITL | J1-1, J1-2 |
+| J1.1-1 | Order the application list and show an application's emails | AFK | None |
+| J1.1-2 | Read and evaluate interview times | HITL | J1-3 proceed gate |
+| J1.1-3 | Remind the user before each interview | AFK | J1.1-2 |
+| J1.1-4 | Add an interview to the calendar | AFK | J1.1-2 |
+| J1.1-5 | Verify interview context in everyday use | HITL | J1.1-1, J1.1-3, J1.1-4 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -362,6 +367,133 @@ Reinstall the command, reload the LaunchAgent if its arguments changed, and use 
 
 Version 1 is complete when all three issues meet their acceptance criteria and the user records `proceed`.
 
+# Milestone Version 1.1 Interview Context
+
+## Version 1.1 outcome
+
+Put the applications that need attention first, give quick context on any application, and make sure no interview is missed, as the MVP's [application history and interviews](MVP.md#application-history-and-interviews) describes. `jobs-list` is ordered by how far each application got, `jobs-show` lists an application's emails, the analyser reads interview times, and the scheduled sync reminds the user before each interview and can add it to a calendar.
+
+J1.1-1 depends on nothing and can start at once. The interview work starts after J1-3 records `proceed`, because it changes what the hourly job step does. J1.1-3 and J1.1-4 can be built at the same time once J1.1-2 has settled where interview times are stored.
+
+## Issue J1.1-1 Order the application list and show an application's emails
+
+**Type:** AFK
+
+**Status:** `planned`
+
+**Blocked by:** None
+
+### What to build
+
+Order `jobs-list` by status, as the MVP's [application list](MVP.md#application-list) describes, and number its applications. Add `jobs-show N`, which shows one application and its linked emails as the MVP's [application history](MVP.md#application-history) describes. Define the order, the numbers, and `jobs-show` in the job contract's [application list](job-tracker-contract.md#application-list), replacing its newest-first order.
+
+### Acceptance criteria
+
+- [ ] `jobs-list` lists `offered`, `interview`, `viewed`, and `applied` applications in that order, then `rejected` ones, each status most recently updated first and then by ID.
+- [ ] `jobs-list` numbers its applications in that order, and `jobs-show` takes the same numbers. A number can change when an application is added or changes status.
+- [ ] `jobs-show N` shows the company, job title, current status, and confirmed aliases, then every linked email oldest first with its received date, sender, subject, reported status, and effect.
+- [ ] In a terminal, a listed email opens in Gmail by its number, and Enter quits.
+- [ ] An unknown number prints an error and exits with status 1.
+- [ ] Showing an application changes no file, and reads the database without the run lock.
+- [ ] The job [user guide](USER-GUIDE.md) and the command list under `status` include `jobs-show`.
+- [ ] Tests use fictional fixtures only.
+
+## Issue J1.1-2 Read and evaluate interview times
+
+**Type:** HITL
+
+**Status:** `needs-triage`
+
+**Blocked by:** J1-3 with a `proceed` decision
+
+### What to build
+
+Read the interview's date and time from each email that reports the `interview` status, as the MVP's [interview reminders](MVP.md#interview-reminders) describe, store it on the application, and evaluate it on private interview emails before anything depends on it.
+
+Triage settles these first, with the user:
+
+- Whether the time is read by the status analyser, which means a new prompt version and a rerun of the J0-4 evaluation to show no regression, or by a second, narrow model call only on interview emails, which leaves prompt `jobs-v0.2` unchanged. The second is preferred unless it is too slow.
+- What counts as a confirmed or moved time, and how a booking-link invitation is told apart from a confirmed one.
+- The private evaluation set: the J0-4 interview emails plus the interview emails synced since, with the times labelled by hand before model output is viewed. The proceed bar, such as no wrong time and at most a few times missed, is agreed before the run.
+
+Define the extraction, grounding, time zone rule, storage, and the hand-set time in the job contract.
+
+### Acceptance criteria
+
+- [ ] Triage records the user's choices in the MVP and the contract.
+- [ ] An interview email with a stated date and time stores that time, in Malaysia time, on its application. A booking link, an unclear time, or an ambiguous time zone stores none.
+- [ ] A later interview email for the same application replaces the time, unless the user set it by hand.
+- [ ] A time the email's text does not support is never stored.
+- [ ] The interview list shows upcoming interviews and those with no time, and the user can set or correct a time by hand.
+- [ ] The private evaluation reports correct, wrong, and missed times, and the user records `proceed`, `revise`, or `stop`.
+- [ ] Status decisions on the J0-4 set are unchanged, or a rerun shows they still meet the J0-5 bar.
+- [ ] No real email content, times, or names enter the repository.
+
+## Issue J1.1-3 Remind the user before each interview
+
+**Type:** AFK
+
+**Status:** `planned`
+
+**Blocked by:** J1.1-2
+
+### What to build
+
+Add interview reminders to the scheduled job step and the next interview to the `status` `Jobs` row, as the MVP's [interview reminders](MVP.md#interview-reminders) describe. Define them in the job contract's [scheduled job step](job-tracker-contract.md#scheduled-job-step), and update the expense contract's [`status`](../expenses/inbox-expense-contract.md#10-spending-summaries) `Jobs` row in the same change.
+
+### Acceptance criteria
+
+- [ ] The first scheduled hour of the day before an interview, and of its day, shows one reminder notification each, with the company, job title, and time.
+- [ ] A reminder missed while the laptop was closed shows at the next scheduled hour before the interview, and never after it.
+- [ ] No reminder is shown twice, including after a reinstall or a failed hour.
+- [ ] An interview with no time shows no reminder.
+- [ ] The `status` `Jobs` row shows the next interview when there is one, and is unchanged otherwise.
+- [ ] Reminders never delay or stop the expense step or the job sync.
+- [ ] Tests use a fake clock and system, and fictional fixtures only.
+
+## Issue J1.1-4 Add an interview to the calendar
+
+**Type:** AFK
+
+**Status:** `needs-triage`
+
+**Blocked by:** J1.1-2
+
+### What to build
+
+Add an interview with a known time to the user's calendar, as the MVP's [interview reminders](MVP.md#interview-reminders) describe. Triage chooses between the macOS Calendar app on the laptop, which needs no Google permission, and Google Calendar, which needs a calendar permission beyond the read-only Gmail sign-in. The second changes the sign-in that both apps share, so it must be flagged as shared infrastructure, with its impact on the expense app noted, and the expense contract's [Gmail API retrieval](../expenses/inbox-expense-contract.md#gmail-api-retrieval) updated. Triage also settles whether events are added by themselves or only when the user asks from the interview list.
+
+### Acceptance criteria
+
+- [ ] Triage records the user's choice in the MVP and the contract.
+- [ ] An interview with a known time can be added as one calendar event with the company, job title, and a Gmail link, and never adds a second event for the same interview.
+- [ ] A moved interview moves its event; a removed time removes or flags it, as triage decides.
+- [ ] The expense app's Gmail access is unchanged, or the shared sign-in change is flagged and the expense sync still passes its sign-in check.
+- [ ] Tests use a fake calendar only.
+
+## Issue J1.1-5 Verify interview context in everyday use
+
+**Type:** HITL
+
+**Status:** `planned`
+
+**Blocked by:** J1.1-1, J1.1-3, J1.1-4
+
+### What to build
+
+Reinstall the command, use `jobs-show` and the interview reminders on real interviews, and finish with a `proceed`, `revise`, or `stop` decision.
+
+### Acceptance criteria
+
+- [ ] `jobs-show` gives the user the context they need before a call.
+- [ ] A real interview gets a correct time, both reminders, and a calendar event. A mock interview on a scratch copy may stand in when no real one arrives.
+- [ ] No credentials, message contents, or database files enter version control.
+- [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
+
+## Version 1.1 completion gate
+
+Version 1.1 is complete when all five issues meet their acceptance criteria and the user records `proceed`.
+
 ## Scope changes
 
-Sharing ingest or processing state with the expense app is excluded by the MVP. Add it here only after the MVP scope changes, as issues with dependencies and completion gates. Scheduled automation was added as [Version 1](#milestone-version-1-sync-on-a-schedule) on 2026-10-23.
+Sharing ingest or processing state with the expense app is excluded by the MVP. Add it here only after the MVP scope changes, as issues with dependencies and completion gates. Scheduled automation was added as [Version 1](#milestone-version-1-sync-on-a-schedule) on 2026-10-23, and application history and interview reminders as [Version 1.1](#milestone-version-11-interview-context) on 2026-10-25.
