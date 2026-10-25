@@ -314,7 +314,7 @@ Show the [notification and dialog](inbox-expense-contract.md#9-scheduled-run) af
 
 **Type:** HITL
 
-**Status:** `in-progress` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24. The user chose on 2026-10-18 to let the hourly sync make the check: every scheduled sync refreshes the token, so the first scheduled sync on or after 2026-10-24 that passes the sign-in is the evidence. Later that day the user chose that V1-5 does not hold back Version 1 and continues as monitoring after it, because a failed refresh stops the sync before it reads any message and shows the sign-in dialog. A forced refresh that day, two days after the token was issued, succeeded with only the `gmail.readonly` scope. Until the check, do not run `gmail-sign-in --replace`, which would issue a new token and restart its age.)
+**Status:** `complete` (the Google Cloud project was moved to In production on 2026-10-16, and a new `gmail.readonly` token refreshed at once; the check is due on or after 2026-10-24. The user chose on 2026-10-18 to let the hourly sync make the check: every scheduled sync refreshes the token, so the first scheduled sync on or after 2026-10-24 that passes the sign-in is the evidence. Later that day the user chose that V1-5 does not hold back Version 1 and continues as monitoring after it, because a failed refresh stops the sync before it reads any message and shows the sign-in dialog. A forced refresh that day, two days after the token was issued, succeeded with only the `gmail.readonly` scope. Until the check, do not run `gmail-sign-in --replace`, which would issue a new token and restart its age. Checked on 2026-10-25: the token was issued at 14:42 UTC on 2026-10-16, and the first full-wake scheduled sync on 2026-10-24, at 16:00, passed the sign-in at an age of 7 days 17 hours, 29 hours after the previous sync. The 23:00 scheduled sync that day, at 8 days 0 hours, and a sync by hand at 00:16 on 2026-10-25 also logged `synced`, and the token file was rewritten by that refresh. The sign-in is shared with the job tracker, so neither project needs a weekly sign-in.)
 
 **Blocked by:** None - can start immediately
 
@@ -324,9 +324,9 @@ Check that a refresh token issued with the In production, unverified status keep
 
 ### Acceptance criteria
 
-- [ ] A token issued after the move to In production refreshes successfully more than seven days after it was issued.
-- [ ] The check records only the token's age and whether it refreshed, with no message content or token values.
-- [ ] If the refresh fails, the user decides how the sign-in is renewed, and the MVP and contract are updated.
+- [x] A token issued after the move to In production refreshes successfully more than seven days after it was issued.
+- [x] The check records only the token's age and whether it refreshed, with no message content or token values.
+- [x] If the refresh fails, the user decides how the sign-in is renewed, and the MVP and contract are updated. The refresh did not fail, so no decision was needed.
 
 ## Issue V1-6 Verify scheduled processing on real inbox messages
 
@@ -351,7 +351,7 @@ Let the installed schedule run by itself on real inbox messages, then have the u
 
 ## Version 1 completion gate
 
-Version 1 is complete when V1-1 to V1-4 and V1-6 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request. [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) continues afterwards as monitoring of the sign-in's lifetime.
+Version 1 is complete when V1-1 to V1-4 and V1-6 meet their acceptance criteria, so scheduled processing works for real inbox messages without requiring Gmail labeling or an interactive agent request. [V1-5](#issue-v1-5-confirm-the-gmail-sign-in-lasts-past-seven-days) continues afterwards as monitoring of the sign-in's lifetime. It was completed on 2026-10-25, when the token refreshed more than seven days after it was issued.
 
 The user accepted Version 1 as complete on 2026-10-18, as recorded in [V1-6](#issue-v1-6-verify-scheduled-processing-on-real-inbox-messages). Day-to-day use is described in the [user guide](USER-GUIDE.md).
 
@@ -408,7 +408,7 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 
 **Type:** AFK
 
-**Status:** `in-progress` (requested on 2026-10-18 as the follow-up to V1.1-2, when the user chose to correct from `spend` itself, with the same four values as `ledger-correct`. Built on 2026-10-18 and tested with scripted input and a temporary database, and run once in a pseudo-terminal on a fictional database. Waits for the user's correction from the installed copy.)
+**Status:** `complete` (requested on 2026-10-18 as the follow-up to V1.1-2, when the user chose to correct from `spend` itself, with the same four values as `ledger-correct`. Built on 2026-10-18 and tested with scripted input and a temporary database, and run once in a pseudo-terminal on a fictional database. On 2026-10-25, with the copy reinstalled from `main`, the user accepted the issue as complete without the unchecked item below, a real correction, choosing to find any remaining problems in everyday use.)
 
 **Blocked by:** V1.1-2
 
@@ -430,7 +430,7 @@ The [terminal review](MVP.md#review): an interactive `review` command, as define
 
 **Type:** AFK
 
-**Status:** `in-progress` (requested on 2026-10-21, when the user found that mail after the morning sync waited until the next day. The user chose the same day to notify only when a run logs an expense, adds a review item, or fails a message. Built on 2026-10-21 and tested with mocked Gmail, runtime, and macOS state. Waits for the reinstall and a same-day check on the laptop.)
+**Status:** `complete` (requested on 2026-10-21, when the user found that mail after the morning sync waited until the next day. The user chose the same day to notify only when a run logs an expense, adds a review item, or fails a message. Built on 2026-10-21 and tested with mocked Gmail, runtime, and macOS state. After the reinstall, `scheduled.log` has no `done_today` or `day_done` from 22:00 on 2026-10-22. Checked on 2026-10-25 from the log and run records: on 2026-10-24 clean scheduled syncs ran at 16:00, 17:00, and 18:00, an expense received at 18:30 was logged by the next full-wake sync at 23:00, after four lid-closed hours, and of the four syncs that day only the 16:00 and 23:00 ones, each logging expenses, notified. Every run from 2026-10-22 20:00 to 2026-10-25 00:16 notified exactly when it logged an expense, with no review items or failures and no dialog.)
 
 **Blocked by:** Version 1
 
@@ -445,13 +445,13 @@ The [hourly scheduled sync](MVP.md#scheduled-sync): remove the gate that ends th
 - [x] Failed messages are still searched from the sync start next run, deferred messages continue next hour, and the failure dialog still shows at most once a day.
 - [x] `status` still shows the last scheduled sync, including from log lines written before the change.
 - [x] Tests use mocked Gmail, runtime, and macOS state, never the real files.
-- [ ] The user reinstalls the `uv tool` copy, and an expense received after an earlier clean sync that day is logged by a later hour the same day.
+- [x] The user reinstalls the `uv tool` copy, and an expense received after an earlier clean sync that day is logged by a later hour the same day.
 
 ## Issue V1.1-5 Keep injected email text from hiding or redating a receipt
 
 **Type:** AFK
 
-**Status:** `in-progress` (requested on 2026-10-21, when a [prompt-injection test](prompt-injection-2026-10-21.md) on the local model found that a line added to a genuine receipt could make it `not_expense` or change its date, and the user asked for a fix. The prompt stays at `expense-v0.9`, because a prompt change needs the private evaluation set, so the fix is in application code. Built and measured on synthetic emails on 2026-10-21. Waits for installation.)
+**Status:** `complete` (requested on 2026-10-21, when a [prompt-injection test](prompt-injection-2026-10-21.md) on the local model found that a line added to a genuine receipt could make it `not_expense` or change its date, and the user asked for a fix. The prompt stays at `expense-v0.9`, because a prompt change needs the private evaluation set, so the fix is in application code. Built and measured on synthetic emails on 2026-10-21. The copy installed on 2026-10-23 and reinstalled from `main` on 2026-10-25 both include both checks, and every scheduled sync since has run it.)
 
 **Blocked by:** None
 
@@ -465,13 +465,13 @@ The [transaction-date and payment-evidence checks](inbox-expense-contract.md#5-e
 - [x] A `not_expense` whose message shows a completed-payment phrase and an amount goes to review.
 - [x] Unit tests cover both checks, including messages that must keep their decision.
 - [x] The suite's attacks and held-out attacks are rerun with the checks, and the results and remaining gaps are recorded in the [prompt-injection test](prompt-injection-2026-10-21.md).
-- [ ] The installed copy runs with the checks.
+- [x] The installed copy runs with the checks.
 
 ## Issue V1.1-6 Type the review date and remove a non-expense from the spending list
 
 **Type:** AFK
 
-**Status:** `in-progress` (requested on 2026-10-21, when a gym's company-claim receipt, sent on request weeks after the payment, was resolved in review with the received date as its default and counted as this week's spending. The user chose both fixes the same day and left reading attachments for later. Built on 2026-10-21 and tested with scripted input and a temporary database. Waits for the reinstall and the user's removal or redating of that expense.)
+**Status:** `complete` (requested on 2026-10-21, when a gym's company-claim receipt, sent on request weeks after the payment, was resolved in review with the received date as its default and counted as this week's spending. The user chose both fixes the same day and left reading attachments for later. Built on 2026-10-21 and tested with scripted input and a temporary database. On 2026-10-25, with the copy reinstalled from `main`, the user chose to keep that expense as logged and accepted the issue as complete without the unchecked item below.)
 
 **Blocked by:** V1.1-3
 
@@ -491,9 +491,11 @@ In [review](MVP.md#review), ask for the date with no default, showing the receiv
 
 ## Version 1.1 completion gate
 
-Version 1.1 is complete when V1.1-1 to V1.1-6 meet their acceptance criteria. Further everyday-use work is added here only after the MVP changes.
+Version 1.1 is complete when V1.1-1 to V1.1-6 meet their acceptance criteria, or the user accepts an issue as complete with an item left unchecked. Further everyday-use work is added here only after the MVP changes.
 
 Version 1.1 was first completed on 2026-10-18, when V1.1-1 and V1.1-2 met their acceptance criteria. It was reopened the same day for V1.1-3, after the MVP added correcting from the spending list, and on 2026-10-21 gained V1.1-4, after the MVP changed the scheduled sync to run every hour, V1.1-5, after a prompt-injection test, and V1.1-6, after the MVP removed the review date default and added removing an expense from the spending list.
+
+Version 1.1 was completed again on 2026-10-25, when V1.1-3 to V1.1-6 were closed. V1.1-4 and V1.1-5 were checked against the hourly log and the installed copy. For V1.1-3 and V1.1-6 the user chose to rely on the scripted checks and find any remaining problems in everyday use, without a real correction or removal.
 
 ## Scope changes
 
