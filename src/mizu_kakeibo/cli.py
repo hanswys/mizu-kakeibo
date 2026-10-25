@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from .constants import SYNC_BATCH_LIMIT, SYNC_RECEIVED_SINCE
 from .correction import correct_spending
 from .evaluation import evaluate, load_dataset
+from .flags import find_flags
 from .gmail_api import (
     GMAIL_API_DIRECTORY,
     GmailApiClient,
@@ -120,6 +121,7 @@ def command_status(args: argparse.Namespace) -> int:
             last_sync(args.database.parent / "scheduled.log"),
             update_commands(),
             _jobs_row(args.jobs_database, today),
+            len(find_flags(store.list_flag_candidates())),
         )
     )
     return 0
@@ -240,8 +242,12 @@ def run_sync(
     received_since: datetime,
     limit: int,
     full: bool,
+    check_unusual: bool = True,
 ) -> SyncReport:
-    """Run one Gmail API sync while the caller holds the run lock, and return its report."""
+    """Run one Gmail API sync while the caller holds the run lock, and return its report.
+
+    `check_unusual` off checks the new expenses for possible duplicates only, as a backfill does.
+    """
     credentials = load_credentials(gmail_directory)
     store = Store(database, ledger)
     with OllamaAnalyser() as analyser, GmailApiClient(credentials) as gmail:
@@ -249,14 +255,19 @@ def run_sync(
         retrieval = retrieve_new_messages(
             gmail, store, received_since=received_since, limit=limit, full=full
         )
-        processor = InboxProcessor(store, analyser)
+        processor = InboxProcessor(store, analyser, check_unusual=check_unusual)
         results = [
             _process_retrieved(processor, retrieval, message_id)
             for message_id in retrieval.selection.message_ids
         ]
-    return SyncReport(
-        _process_report(retrieval.selection.as_json(), results), runtime.runtime_version
-    )
+    output = _process_report(retrieval.selection.as_json(), results)
+    expenses = set(output["summary"]["expense"])
+    flagged = [
+        flag.entry.message_id
+        for flag in find_flags(store.list_flag_candidates())
+        if flag.entry.provider == "gmail" and flag.entry.message_id in expenses
+    ]
+    return SyncReport(output, runtime.runtime_version, flagged)
 
 
 def command_sync(args: argparse.Namespace) -> int:
@@ -269,6 +280,7 @@ def command_sync(args: argparse.Namespace) -> int:
                 received_since=datetime.fromisoformat(args.received_since),
                 limit=args.limit,
                 full=args.full,
+                check_unusual=not args.full,
             )
     except RunLockHeldError as error:
         return _report_locked(error)
@@ -789,7 +801,10 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--received-since", default=SYNC_RECEIVED_SINCE)
     sync.add_argument("--limit", type=int, default=SYNC_BATCH_LIMIT)
     sync.add_argument(
-        "--full", action="store_true", help="search from the sync start, ignoring progress"
+        "--full",
+        action="store_true",
+        help="search from the sync start, ignoring progress, as a backfill; "
+        "its expenses are checked for duplicates but not unusual amounts",
     )
     sync.add_argument("--gmail-directory", type=Path, default=GMAIL_API_DIRECTORY)
     _add_storage_options(sync)

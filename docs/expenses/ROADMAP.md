@@ -558,7 +558,7 @@ Add the subscriptions command and its `status` line, as the MVP's [subscriptions
 
 **Type:** AFK
 
-**Status:** `needs-triage`
+**Status:** `complete` (triage 2026-10-25: the user accepted every recommendation, recorded in the MVP's [unusual and duplicate charges](MVP.md#unusual-and-duplicate-charges) and the contract's [flags](inbox-expense-contract.md#flags). Flags are worked out from the active transactions each time; only the per-analysis checks and the user's keeps are stored. V1.3-2 is unblocked on this side and pairs captures with `is_possible_duplicate`.)
 
 **Blocked by:** None
 
@@ -568,14 +568,14 @@ Flag possible duplicates and unusual amounts when an expense is logged, show the
 
 ### Acceptance criteria
 
-- [ ] Triage records the user's choices in the MVP and the contract.
-- [ ] An expense with the same merchant, amount, and currency as another on the same day is flagged as a possible duplicate, and an amount far above the merchant's usual one is flagged as unusual.
-- [ ] A flagged expense is logged and counted as usual. A flag never changes or removes it.
-- [ ] A scheduled sync that flagged an expense says so in its notification. One that flagged nothing notifies as before.
-- [ ] `status` shows how many flags wait. Keeping an expense clears its flag for good, and removing it works as removal from the spending list.
-- [ ] Re-evaluating or correcting an expense rechecks its flag.
-- [ ] The job step, its notification, and its records are unchanged.
-- [ ] Tests use fictional ledgers and a fake system only.
+- [x] Triage records the user's choices in the MVP and the contract.
+- [x] An expense with the same merchant, amount, and currency as another on the same day is flagged as a possible duplicate, and an amount far above the merchant's usual one is flagged as unusual.
+- [x] A flagged expense is logged and counted as usual. A flag never changes or removes it.
+- [x] A scheduled sync that flagged an expense says so in its notification. One that flagged nothing notifies as before.
+- [x] `status` shows how many flags wait. Keeping an expense clears its flag for good, and removing it works as removal from the spending list.
+- [x] Re-evaluating or correcting an expense rechecks its flag.
+- [x] The job step, its notification, and its records are unchanged.
+- [x] Tests use fictional ledgers and a fake system only.
 
 ## Issue V1.2-4 Verify spending insights in everyday use
 
