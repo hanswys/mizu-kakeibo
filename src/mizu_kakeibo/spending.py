@@ -29,6 +29,7 @@ _JOB_COMMANDS = (
     ("mizu-kakeibo jobs-review", "resolve the job emails waiting for review"),
     ("mizu-kakeibo jobs-skim", "this week's emails to skim for a missed update"),
     ("mizu-kakeibo jobs-list", "every job application with its current status"),
+    ("mizu-kakeibo jobs-show 1", "one application from jobs-list and its emails"),
 )
 
 _FAILED_STAGES = {

@@ -233,7 +233,7 @@ A review item has one cause: `analyser` for a `needs_review` decision, `likely_m
 | --- | --- |
 | `a` | accept: attach to the suggested application with the extracted values; offered only when an application is suggested |
 | `e` | edit: type the company, job title, and status, defaulting to the extracted values, and match them |
-| `t` | attach to another application, picked by number from the application list, with a status and names that default to the extracted values, or else to the application's own names |
+| `t` | attach to another application, picked by its ID from a list of the applications in the [application list's](#application-list) order, with a status and names that default to the extracted values, or else to the application's own names |
 | `c` | create a new application from a typed company, job title, and status |
 | `n` | not an application |
 | `m` | show the whole envelope text in a pager |
@@ -303,7 +303,11 @@ The expense app's `status` counts the messages that `jobs-skim week` would list 
 
 ### Application list
 
-`jobs-list` prints the applications, newest latest update first and then by ID, with their latest update date, current status, company, and job title as first written. It also counts the applications and the unresolved review items.
+`jobs-list` prints the applications, numbered from 1, with their latest update date, current status, company, and job title as first written. They are ordered by current status, `offered`, `interview`, `viewed`, `applied`, then `rejected`, and within a status by latest update date, newest first, and then by application ID. The numbers follow that order, so an application's number can change when an application is added or changes status; they are not application IDs. It also counts the applications and the unresolved review items.
+
+`jobs-show N` shows the application `jobs-list` numbers `N`: its company and job title as first written, its current status and latest update date, and its [aliases](#10-persistence), oldest first, or `none`. Then it lists every message linked to the application, ordered by `received_at` and then by message ID, one line each: the Malaysia-time received date, the sender's display name or else its address, the link's status, its effect as stored (`created`, `advanced`, `reopened`, or `unchanged`), followed by ` (reviewed)` when the link came from a review resolution, and the subject, shortened to fit one line; then the number of messages. When standard input and standard output are both terminals, the messages are numbered and it asks for a number to open that message's [Gmail link](../expenses/inbox-expense-contract.md#7-persistence-contract) with `open`, as the [skim list](#skim-list) does, until Enter, `q`, the end of input, or an interrupt. An `N` that is not a number from 1 to the number of applications prints `no application N` with a pointer to `jobs-list` on standard error and exits with status 1.
+
+`jobs-list` and `jobs-show` read the database as `status` does, read-only and without the run lock, so they record nothing, create or migrate no database, and work while a run holds the lock; without one they stop with an error.
 
 The expense app's `status` shows the same two counts, read without the run lock from a database it opens read-only and never creates, as its contract's [`status`](../expenses/inbox-expense-contract.md#10-spending-summaries) describes.
 

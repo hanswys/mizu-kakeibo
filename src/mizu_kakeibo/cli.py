@@ -29,6 +29,7 @@ from .jobs.analyser import OllamaJobAnalyser
 from .jobs.constants import JOBS_RECEIVED_SINCE, JOBS_SEARCH_TERMS, JOBS_SYNC_BATCH_LIMIT
 from .jobs.evaluation import evaluate as evaluate_jobs
 from .jobs.evaluation import load_dataset as load_jobs_dataset
+from .jobs.history import UnknownApplicationError, find_history, render_history, show
 from .jobs.processor import JobProcessingResult, JobProcessor, parse_job_message, run_report
 from .jobs.review import application_list
 from .jobs.review import review as review_jobs
@@ -529,7 +530,19 @@ def command_jobs_review(args: argparse.Namespace) -> int:
 
 
 def command_jobs_list(args: argparse.Namespace) -> int:
-    sys.stdout.write(application_list(_existing_job_store(args), Console().width()))
+    sys.stdout.write(application_list(_existing_job_database(args), Console().width()))
+    return 0
+
+
+def command_jobs_show(args: argparse.Namespace) -> int:
+    try:
+        history = find_history(_existing_job_database(args), args.number)
+    except UnknownApplicationError as error:
+        sys.stderr.write(f"mizu-kakeibo jobs-show: {error}\n")
+        return 1
+    if sys.stdout.isatty():
+        return show(history, Console())
+    sys.stdout.write(render_history(history, Console().width()) + "\n")
     return 0
 
 
@@ -767,6 +780,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     jobs_list.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
     jobs_list.set_defaults(handler=command_jobs_list)
+
+    jobs_show = subparsers.add_parser(
+        "jobs-show", help="show one job application from jobs-list and the emails linked to it"
+    )
+    jobs_show.add_argument("number", help="the application's number in jobs-list")
+    jobs_show.add_argument("--database", type=Path, default=JOBS_LIVE_DATABASE)
+    jobs_show.set_defaults(handler=command_jobs_show)
 
     jobs_skim = subparsers.add_parser(
         "jobs-skim",

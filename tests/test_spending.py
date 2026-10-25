@@ -181,13 +181,14 @@ def test_status_adds_the_job_row_and_commands_when_given() -> None:
     plain = render_status(TODAY, [], 0, None)
     lines = render_status(TODAY, [], 0, None, jobs=job_counts(12, 2)).splitlines()
     assert lines[7] == "  Jobs        12 applications · 2 to review"
-    assert "\n".join(lines[:7] + lines[8:-5]) + "\n" == plain
-    assert lines[-5:] == [
+    assert "\n".join(lines[:7] + lines[8:-6]) + "\n" == plain
+    assert lines[-6:] == [
         "",
         "  mizu-kakeibo jobs-sync                  read new job-application emails now",
         "  mizu-kakeibo jobs-review                resolve the job emails waiting for review",
         "  mizu-kakeibo jobs-skim                  this week's emails to skim for a missed update",
         "  mizu-kakeibo jobs-list                  every job application with its current status",
+        "  mizu-kakeibo jobs-show 1                one application from jobs-list and its emails",
     ]
     assert job_counts(1, 0) == job_counts(1, 0, 0) == "1 application · 0 to review"
     assert job_counts(2, 1, 3) == "2 applications · 1 to review · 3 to skim this week"

@@ -461,6 +461,110 @@ def read_not_applications(database_path: Path) -> list[NotApplication]:
     return sorted(messages, key=lambda message: (message.received_at, message.message_id))
 
 
+# The application list's order: how far each application got, with closed ones last.
+LIST_ORDER = (
+    JobStatus.OFFERED,
+    JobStatus.INTERVIEW,
+    JobStatus.VIEWED,
+    JobStatus.APPLIED,
+    JobStatus.REJECTED,
+)
+
+
+def _listed(connection: sqlite3.Connection) -> list[ApplicationRow]:
+    rows = connection.execute(
+        "SELECT id, company, job_title, status, latest_update_date FROM applications"
+    ).fetchall()
+    applications = [_application_row(row) for row in rows]
+    return sorted(
+        applications,
+        key=lambda application: (
+            LIST_ORDER.index(application.status),
+            -application.latest_update.toordinal(),
+            application.id,
+        ),
+    )
+
+
+def read_applications(database_path: Path) -> list[ApplicationRow]:
+    """Read the applications in the list's order, writing nothing; number N is index N - 1."""
+    connection = _read_only(database_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        return _listed(connection)
+    finally:
+        connection.close()
+
+
+@dataclass(frozen=True)
+class LinkedEmail:
+    """A message linked to an application, as its history shows it."""
+
+    provider: str
+    message_id: str
+    thread_id: str | None
+    received_at: datetime
+    sender: str
+    subject: str
+    status: JobStatus
+    effect: LinkEffect
+    reviewed: bool
+
+
+@dataclass(frozen=True)
+class ApplicationHistory:
+    application: ApplicationRow
+    aliases: list[tuple[str, str]]
+    emails: list[LinkedEmail]
+
+
+def read_history(database_path: Path, number: int) -> ApplicationHistory | None:
+    """Read the application numbered `number` in the list, its aliases, and its emails oldest
+    first, writing nothing; None when no application has that number.
+    """
+    connection = _read_only(database_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        applications = _listed(connection)
+        if not 1 <= number <= len(applications):
+            return None
+        application = applications[number - 1]
+        aliases = connection.execute(
+            "SELECT company, job_title FROM aliases WHERE application_id = ? ORDER BY id",
+            (application.id,),
+        ).fetchall()
+        rows = connection.execute(
+            "SELECT l.provider, l.message_id, m.thread_id, l.received_at, l.status, l.effect, "
+            "l.resolution_id, json_extract(m.envelope_json, '$.sender') AS sender, "
+            "json_extract(m.envelope_json, '$.subject') AS subject "
+            "FROM links l JOIN messages m "
+            "ON m.provider = l.provider AND m.message_id = l.message_id "
+            "WHERE l.application_id = ?",
+            (application.id,),
+        ).fetchall()
+    finally:
+        connection.close()
+    emails = [
+        LinkedEmail(
+            row["provider"],
+            row["message_id"],
+            row["thread_id"],
+            datetime.fromisoformat(row["received_at"]),
+            row["sender"],
+            row["subject"],
+            JobStatus(row["status"]),
+            LinkEffect(row["effect"]),
+            row["resolution_id"] is not None,
+        )
+        for row in rows
+    ]
+    return ApplicationHistory(
+        application,
+        [(row["company"], row["job_title"]) for row in aliases],
+        sorted(emails, key=lambda email: (email.received_at, email.message_id)),
+    )
+
+
 class JobStore:
     def __init__(self, database_path: Path) -> None:
         self.database_path = Path(database_path)
@@ -628,13 +732,9 @@ class JobStore:
         return InboxMessage.model_validate_json(row["envelope_json"])
 
     def list_applications(self) -> list[ApplicationRow]:
-        """Return every application, newest latest update first, then by ID."""
+        """Return every application in the list's order."""
         with self.connect() as connection:
-            rows = connection.execute(
-                "SELECT id, company, job_title, status, latest_update_date FROM applications "
-                "ORDER BY latest_update_date DESC, id"
-            ).fetchall()
-        return [_application_row(row) for row in rows]
+            return _listed(connection)
 
     def match(self, company: str, job_title: str) -> tuple[str, ApplicationRow | None]:
         """Say what matching these names would do: `exact`, `likely`, or `new`."""
