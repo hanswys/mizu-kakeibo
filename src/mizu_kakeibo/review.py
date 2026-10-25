@@ -13,10 +13,11 @@ from typing import TypeVar
 
 from iso4217 import Currency
 
+from .flags import UNUSUAL_FACTOR, Flag, find_flags
 from .models import AnalysisDecision, InboxMessage, Transaction
 from .scheduled import MALAYSIA
-from .spending import HOME_CURRENCY, expense_row
-from .storage import ReviewItem, ReviewResolutionError, Store
+from .spending import HOME_CURRENCY, expense_row, format_money
+from .storage import LedgerCorrectionError, LedgerEntry, ReviewItem, ReviewResolutionError, Store
 
 PREVIEW_LINES = 15
 SENDER_WIDTH = 20
@@ -29,6 +30,7 @@ FIELD_NAMES = {
     "message_content": "text",
 }
 KEYS = "e expense · n not an expense · m whole text · g Gmail · s skip · q quit: "
+FLAG_KEYS = "k keep · n not an expense · g Gmail · s skip · q quit: "
 # Control characters and bidirectional overrides, so a message cannot drive the terminal.
 _UNSAFE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f‪-‮⁦-⁩]")
 _AMOUNT = re.compile(r"(\d+|\d{1,3}(?:,\d{3})+)(?:\.(\d+))?")
@@ -115,11 +117,11 @@ def _entries(store: Store) -> list[_Entry]:
     ]
 
 
-def render_list(entries: list[_Entry], columns: int) -> str:
+def render_list(entries: list[_Entry], columns: int, number_width: int | None = None) -> str:
     """Number each review item on one line: date, sender, subject, and why it waits."""
     count = len(entries)
     lines = [f"{count} message{'' if count == 1 else 's'} to review", ""]
-    number_width = len(str(count))
+    number_width = number_width or len(str(count))
     senders = [
         _shorten(entry.sender_name or _line(parseaddr(entry.message.sender)[1]), SENDER_WIDTH)
         for entry in entries
@@ -136,6 +138,55 @@ def render_list(entries: list[_Entry], columns: int) -> str:
         lines.append(
             f"  {number:>{number_width}}  {received:%a} {received.day:>2} {received:%b}  "
             f"{sender:<{sender_width}}  {_shorten(subject, subject_width):<{subject_width}}  {why}"
+        )
+    return "\n".join(lines)
+
+
+def _flag_why(flag: Flag) -> str:
+    reasons = []
+    if flag.duplicate_of is not None:
+        reasons.append("possible duplicate")
+    if flag.usual_minor is not None:
+        reasons.append(f"unusual, usually {format_money(flag.usual_minor, flag.entry.currency)}")
+    return ", ".join(reasons)
+
+
+def _cells(entry: LedgerEntry) -> tuple[str, str, str]:
+    return expense_row(entry.transaction_date, entry.merchant, entry.amount_minor, entry.currency)
+
+
+def render_flags(flags: list[Flag], first: int, number_width: int) -> str:
+    """Number each flagged expense on one line, as `spend` lists it, with why it is flagged."""
+    count = len(flags)
+    lines = [f"{count} flagged expense{'' if count == 1 else 's'} to check", ""]
+    rows = [_cells(flag.entry) for flag in flags]
+    widths = [max(len(row[column]) for row in rows) for column in range(3)]
+    for number, (flag, (day, merchant, amount)) in enumerate(zip(flags, rows), start=first):
+        lines.append(
+            f"  {number:>{number_width}}  {day:<{widths[0]}}  {merchant:<{widths[1]}}  "
+            f"{amount:>{widths[2]}}  {_flag_why(flag)}"
+        )
+    return "\n".join(lines)
+
+
+def _email(message: InboxMessage) -> str:
+    sender = _line(parseaddr(message.sender)[0]) or _line(parseaddr(message.sender)[1])
+    return f"{sender}, {_line(message.subject) or '(no subject)'}"
+
+
+def render_flag(flag: Flag, store: Store) -> str:
+    entry = flag.entry
+    lines = ["Flagged expense", f"  Expense   {'  '.join(_cells(entry))}"]
+    lines.append(f"  Email     {_email(store.message(entry.provider, entry.message_id))}")
+    if flag.duplicate_of is not None:
+        earlier = flag.duplicate_of
+        lines.append("  Duplicate the same merchant, amount, and day as an expense logged earlier")
+        lines.append(f"  Earlier   {_email(store.message(earlier.provider, earlier.message_id))}")
+    if flag.usual_minor is not None:
+        usual = format_money(flag.usual_minor, entry.currency)
+        lines.append(
+            f"  Unusual   more than {UNUSUAL_FACTOR}× the usual {usual}, "
+            f"the median of {flag.earlier_charges} earlier charges"
         )
     return "\n".join(lines)
 
@@ -260,18 +311,31 @@ class _Review(Prompter):
     def run(self) -> None:
         while True:
             entries = _entries(self.store)
-            if not entries:
+            flags = find_flags(self.store.list_flag_candidates())
+            if not entries and not flags:
                 self.console.write("Nothing to review.")
                 return
-            self.console.write(render_list(entries, self.console.width()))
+            self.console.write(render_lists(entries, flags, self.console.width()))
             self.console.write()
-            start = self.pick(len(entries))
-            for number, entry in enumerate(entries[start:], start=start + 1):
+            work: list[_Entry | Flag] = [*entries, *flags]
+            start = self.pick(len(work))
+            for number, item in enumerate(work[start:], start=start + 1):
                 self.console.write()
-                if not self.unresolved(entry):
-                    self.console.write(f"Message {number} was already resolved; passing over it.")
-                    continue
-                self.resolve(entry)
+                if isinstance(item, _Entry):
+                    if not self.unresolved(item):
+                        self.console.write(
+                            f"Message {number} was already resolved; passing over it."
+                        )
+                        continue
+                    self.resolve(item)
+                else:
+                    flag = self.still_flagged(item)
+                    if flag is None:
+                        self.console.write(
+                            f"Expense {number} is no longer flagged; passing over it."
+                        )
+                        continue
+                    self.check(flag)
             self.console.write()
 
     def pick(self, count: int) -> int:
@@ -284,6 +348,17 @@ class _Review(Prompter):
     def unresolved(self, entry: _Entry) -> bool:
         return any(
             item.analysis_id == entry.item.analysis_id for item in self.store.list_review_items()
+        )
+
+    def still_flagged(self, flag: Flag) -> Flag | None:
+        """The expense's flag worked out afresh, as a correction or removal may have cleared it."""
+        return next(
+            (
+                current
+                for current in find_flags(self.store.list_flag_candidates())
+                if current.candidate.analysis_id == flag.candidate.analysis_id
+            ),
+            None,
         )
 
     def resolve(self, entry: _Entry) -> None:
@@ -344,6 +419,39 @@ class _Review(Prompter):
             transaction_date=transaction_date,
         )
 
+    def check(self, flag: Flag) -> None:
+        """Show one flagged expense and act on its keys until it is kept, removed, or skipped."""
+        self.console.write(render_flag(flag, self.store))
+        self.console.write()
+        entry = flag.entry
+        while True:
+            key = self.ask(FLAG_KEYS).strip().lower()
+            if key == "k":
+                if self.confirm("Keep it: the expense stays logged and the flag does not return"):
+                    self.store.keep_flags(flag.candidate.analysis_id, flag.kinds)
+                    self.console.write("Kept.")
+                    return
+            elif key == "n":
+                if self.confirm("Not an expense: remove it from the ledger and every total"):
+                    try:
+                        self.store.remove_transaction(entry.provider, entry.message_id)
+                    except LedgerCorrectionError:
+                        self.console.write("This expense is no longer logged; nothing was saved.")
+                    else:
+                        self.console.write("Removed.")
+                    return
+            elif key == "g":
+                thread_id = self.store.message(entry.provider, entry.message_id).source.thread_id
+                url = gmail_url(entry.message_id, thread_id) if entry.provider == "gmail" else None
+                if url is None:
+                    self.console.write("  This expense has no Gmail link.")
+                else:
+                    self.console.open(url)
+            elif key == "s":
+                return
+            else:
+                self.console.write("  Press k, n, g, s, or q.")
+
     def save(
         self, entry: _Entry, decision: AnalysisDecision, transaction: Transaction | None
     ) -> None:
@@ -357,11 +465,25 @@ class _Review(Prompter):
             self.console.write("Saved.")
 
 
+def render_lists(entries: list[_Entry], flags: list[Flag], columns: int) -> str:
+    """Number the review items, then the flagged expenses, in one run of numbers."""
+    width = len(str(len(entries) + len(flags)))
+    parts = [render_list(entries, columns, width)] if entries else []
+    if flags:
+        parts.append(render_flags(flags, len(entries) + 1, width))
+    return "\n\n".join(parts)
+
+
 def review(store: Store, console: Console) -> int:
-    """Resolve the unresolved review items one at a time, as `review-resolve` would."""
+    """Resolve the review items, as `review-resolve` would, then check the flagged expenses."""
     if not console.interactive():
         entries = _entries(store)
-        console.write(render_list(entries, console.width()) if entries else "Nothing to review.")
+        flags = find_flags(store.list_flag_candidates())
+        console.write(
+            render_lists(entries, flags, console.width())
+            if entries or flags
+            else "Nothing to review."
+        )
         return 0
     try:
         _Review(store, console).run()

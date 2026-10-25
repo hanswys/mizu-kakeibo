@@ -59,9 +59,10 @@ class ProcessingResult:
 
 
 class InboxProcessor:
-    def __init__(self, store: Store, analyser: Analyser) -> None:
+    def __init__(self, store: Store, analyser: Analyser, *, check_unusual: bool = True) -> None:
         self.store = store
         self.analyser = analyser
+        self.check_unusual = check_unusual
 
     def process_one(self, message: InboxMessage, *, reevaluate: bool = False) -> ProcessingResult:
         provider = message.source.provider
@@ -87,7 +88,13 @@ class InboxProcessor:
                     raise
                 output = persisted_output = _REPEATED_FAILURE_REVIEW
             metadata = self.analyser.verify_runtime()
-            self.store.save_analysis(message, persisted_output, metadata, reevaluate=reevaluate)
+            self.store.save_analysis(
+                message,
+                persisted_output,
+                metadata,
+                reevaluate=reevaluate,
+                check_unusual=self.check_unusual,
+            )
             return ProcessingResult(
                 provider,
                 message_id,

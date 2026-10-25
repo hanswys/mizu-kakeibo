@@ -231,11 +231,13 @@ def render_status(
     sync: str | None,
     update: Sequence[str] | None = None,
     jobs: str | None = None,
+    flag_count: int = 0,
     subscriptions: str | None = None,
 ) -> str:
     """Summarize today, this week, and this month from the entries, which may reach further back.
 
     `jobs` is the job tracker's row, given only when it has a database; its commands follow.
+    The `Flags` row shows only while flagged expenses wait.
     `subscriptions` is the subscriptions row, given only when it has something to point out.
     """
     week = parse_period("week", today)
@@ -250,8 +252,10 @@ def render_status(
         ("This week", summary_line(within(week))),
         ("This month", summary_line(within(month))),
         ("To review", review),
-        ("Last sync", sync or "none recorded"),
     ]
+    if flag_count:
+        rows.append(("Flags", f"{flag_count} to check"))
+    rows.append(("Last sync", sync or "none recorded"))
     if jobs is not None:
         rows.append(("Jobs", jobs))
     if subscriptions is not None:
