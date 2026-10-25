@@ -167,6 +167,7 @@ def test_status_totals_today_week_and_month() -> None:
     assert [words[1] for words in commands[1:]] == [
         "spend",
         "spend",
+        "subscriptions",
         "review",
         "sync",
         "gmail-sign-in",
