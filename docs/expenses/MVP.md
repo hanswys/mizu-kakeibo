@@ -149,11 +149,15 @@ The user asked on 2026-10-25 for the ledger to point out what needs attention, n
 ### Subscriptions
 
 - A subscriptions command lists the merchants charged repeatedly at a regular interval, such as monthly or yearly, with each one's latest amount, interval, latest charge date, and expected next charge, and a monthly total for each currency.
-- It points out a subscription whose latest charge differs from the one before, such as a price rise or a free trial that turned paid, and a subscription first charged this month.
+- It points out a subscription whose latest charge differs from the one before, such as a price rise or a free trial that turned paid, and a subscription started this month.
 - The spending summary adds one line when a subscription changed price or started this month.
 - The list is worked out from the ledger each time, so nothing new is stored, and a corrected or removed expense changes it at once.
 - A subscription is recognized from its charges, so it appears after its second charge. One paid through a card or wallet that sends no email appears once [spending without emails](#spending-without-emails) logs it.
-- Settled in the roadmap's triage: how regular the interval and how close the merchant names must be, and whether a receipt's own wording, such as a renewal date, can mark a subscription after one charge.
+- A merchant is a subscription when it was charged at least twice and every gap between consecutive charges fits one interval: 26 to 35 days for monthly, or 350 to 380 days for yearly. Its amounts may differ.
+- Merchant names match when they are the same apart from letter case and spacing, with no fuzzier matching. Correcting an expense's merchant in the spending list joins a charge logged under another name.
+- A price change is a latest charge whose amount or currency differs from the charge before. A subscription counts as started this month when its second charge, the one that makes it a subscription, is this month, since a first charge this month seldom has a second one yet.
+- The expected next charge is one month or one year after the latest charge, on the same day or the month's last day. A subscription more than one interval past its expected charge is kept on the list and marked as possibly lapsed, and is left out of the monthly total.
+- A receipt's own wording, such as a renewal date, does not mark a subscription after one charge, because that would change the analyser.
 
 ### Unusual and duplicate charges
 

@@ -60,6 +60,24 @@ An expense counts on its transaction date. Totals include only what the latest s
 
 You can also ask Claude Code in this repository, for example "how much did I spend on Grab this month?".
 
+### Subscriptions
+
+`mizu-kakeibo subscriptions` lists the merchants that charge you every month or every year, with the latest amount, the latest and expected next charge, and what they cost per month in each currency:
+
+```text
+Subscriptions · Sun 25 Oct 2026
+
+  Netflix  monthly  last 18 Oct 2026  next 18 Nov 2026  MYR 56.90  up MYR 2.00
+  iCloud   yearly   last 2 Mar 2026   next 2 Mar 2027   MYR 49.00
+
+  Per month  MYR 60.98
+  A yearly subscription counts as a twelfth of its amount.
+```
+
+A merchant appears after its second charge, when the two are about a month or a year apart. It is marked `up` or `down` when its latest charge differs from the one before, `new this month` when its second charge was this month, and `lapsed?` when its expected charge is more than a month (or a year) late; a lapsed one is left out of the monthly total. When a price changed this month or a subscription is new, the summary from `mizu-kakeibo` adds a `Subscriptions` line.
+
+Charges are matched by merchant name, ignoring letter case and spacing. If the same subscription was logged under two names, such as `NETFLIX.COM` and `Netflix`, [fix the merchant](#fixing-a-logged-expense) of one so they match.
+
 ## Reviewing a message
 
 Run `mizu-kakeibo review`, or click **Review in Terminal** in the dialog. It lists the waiting messages, numbered:

@@ -58,6 +58,7 @@ from .storage import (
     ReviewResolutionError,
     Store,
 )
+from .subscriptions import detect, render_subscriptions, subscriptions_row
 from .transcript import collect_raw_messages, connector_message_metadata, current_session_transcript
 from .update import update_commands
 
@@ -111,8 +112,7 @@ def _jobs_row(database: Path, today: date) -> str | None:
 def command_status(args: argparse.Namespace) -> int:
     store = _existing_store(args)
     today = _today()
-    week, month = parse_period("week", today), parse_period("month", today)
-    entries = store.list_transactions(min(week.start, month.start), today)
+    entries = store.list_transactions(date.min, today)
     sys.stdout.write(
         render_status(
             today,
@@ -122,8 +122,17 @@ def command_status(args: argparse.Namespace) -> int:
             update_commands(),
             _jobs_row(args.jobs_database, today),
             len(find_flags(store.list_flag_candidates())),
+            subscriptions_row(detect(entries, today), today),
         )
     )
+    return 0
+
+
+def command_subscriptions(args: argparse.Namespace) -> int:
+    store = _existing_store(args)
+    today = _today()
+    entries = store.list_transactions(date.min, today)
+    sys.stdout.write(render_subscriptions(detect(entries, today), today))
     return 0
 
 
@@ -675,6 +684,12 @@ def build_parser() -> argparse.ArgumentParser:
     spend.add_argument("--by", choices=["merchant"], help="total each merchant instead")
     _add_storage_options(spend)
     spend.set_defaults(handler=command_spend)
+
+    subscriptions = subparsers.add_parser(
+        "subscriptions", help="list the monthly and yearly charges and their price changes"
+    )
+    _add_storage_options(subscriptions)
+    subscriptions.set_defaults(handler=command_subscriptions)
 
     review_parser = subparsers.add_parser(
         "review", help="resolve the messages waiting for review, one at a time"
