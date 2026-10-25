@@ -122,6 +122,7 @@ The backlog takes several runs. Each run processes the oldest new messages up to
 - Ignore other jobs listed in the same email, such as recommendations, when extracting company and job title.
 - Return `needs_review` when the company or job title is missing, the status is unclear, or the content cannot be interpreted safely.
 - Produce structured output that can be validated before anything is persisted.
+- From Version 1.1, also read the interview time from an email that reports the `interview` status; see [interview reminders](#interview-reminders).
 
 ### Application matching
 
@@ -144,6 +145,7 @@ Review runs in the terminal, like the [expense review](../expenses/MVP.md#review
 ### Application list
 
 - Show every application in the terminal with its company, job title, current status, and the date of its latest update.
+- From Version 1.1, order the list by how far each application got: `offered`, `interview`, `viewed`, then `applied`, with `rejected` last, and within each status the most recently updated first. The user chose this on 2026-10-25, so the applications that need attention come first and closed ones sink to the bottom.
 - Once the first sync has created the database, the expense app's [spending summary](../expenses/MVP.md#spending-summaries) also counts the applications and the emails waiting for review, and lists the job commands, as the user chose on 2026-10-22. Reading the counts changes nothing and does not wait for a sync. Day-to-day use is described in the [user guide](USER-GUIDE.md).
 
 ### Run result
@@ -174,6 +176,27 @@ Nobody reads a scheduled run's result, so the [skim list](#run-result) needs ano
 - A `jobs-skim` command lists the job-related `not_application` emails received in a period, by date, sender, and subject. The default is this week, and it accepts the same periods as the expense app's spending command. It is worked out from the stored decisions, so nothing new is stored, and an email can be opened in Gmail from the list. A missed status update is still corrected by re-evaluation.
 - The `Jobs` row of the [spending summary](../expenses/MVP.md#spending-summaries) adds the number of emails to skim this week when there are any.
 
+## Application history and interviews
+
+The user asked on 2026-10-25 for quick context before a call or interview, and to be reminded of each interview, because interview emails are the ones that matter most and are easy to lose among the rest.
+
+### Application history
+
+- `jobs-list` numbers its applications, and `jobs-show` with a number shows that application's company, job title, current status, and confirmed aliases.
+- Below them it lists every email linked to the application, oldest first, with its received date, sender, subject, the status it reported, and what it did: created, advanced, or reopened the application, or left it unchanged.
+- In a terminal, a listed email opens in Gmail by its number.
+- Showing an application changes nothing.
+
+### Interview reminders
+
+- When an email reports the `interview` status for an application, the interview's date and time are read from it when the email states them. An invitation that only asks the user to pick a slot, such as a booking link, has no time yet. A later email for the same application that confirms or moves the time replaces it.
+- A time must be supported by the email's text, like a company or job title. A time that is unclear, or whose time zone is ambiguous, is left unknown rather than guessed. Malaysia time is assumed only when the email names no time zone and nothing suggests another.
+- The interview list shows upcoming interviews by date and time with the company and job title, and interviews whose time is unknown. The user can set or correct an interview's time by hand. A time set by hand is never replaced by a later email.
+- The scheduled sync shows a reminder notification on the day before an interview and on the morning of it, each at the first scheduled hour of that day. A reminder missed while the laptop was closed is shown at the next scheduled hour that is still before the interview. Each reminder is shown once.
+- The [spending summary](../expenses/MVP.md#spending-summaries) shows the next interview in the `Jobs` row.
+- An interview with a known time can be added to the user's calendar, so it appears on the phone as well. Settled in the roadmap's triage: the macOS Calendar app on the laptop, or Google Calendar, which needs a permission beyond today's read-only Gmail sign-in and so changes the sign-in both apps share.
+- Interview times are evaluated on private interview emails before reminders depend on them, as the analyser was.
+
 ## Privacy
 
 The same rules as the expense project apply: no real email content, identifiers, or personal data may be committed to the repository. Samples of email structure must record field names, types, and layout only.
@@ -186,8 +209,8 @@ The MVP does not require:
 - Emails received before 2026-10-08.
 - Attachment retrieval or analysis, including offer letters sent as attachments.
 - Fuzzy matching that updates an application without review.
-- Calendar events, reminders, or follow-up prompts.
-- Reporting, analytics, or visual dashboards beyond the application list.
+- Calendar events, reminders, or follow-up prompts. Version 1.1 adds [interview reminders](#interview-reminders) and their calendar events; other reminders and follow-up prompts stay out of scope.
+- Reporting, analytics, or visual dashboards beyond the application list and an [application's history](#application-history).
 - Replying to or acting on emails.
 - Sharing ingest or processing state with the expense app.
 - Gmail labels or filters, Gmail push notifications, or scheduled automation. Version 1 adds the [scheduled sync](#scheduled-sync) after the MVP.

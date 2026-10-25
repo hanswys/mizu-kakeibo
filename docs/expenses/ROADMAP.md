@@ -31,6 +31,14 @@ The roadmap proves the analyser on a fixed private dataset, makes the workflow r
 | V1.1-4 | Sync every hour instead of once a day | AFK | Version 1 |
 | V1.1-5 | Keep injected email text from hiding or redating a receipt | AFK | None |
 | V1.1-6 | Type the review date and remove a non-expense from the spending list | AFK | V1.1-3 |
+| V1.2-1 | Size a ledger backfill and decide its start | HITL | None |
+| V1.2-2 | List subscriptions and their price changes | AFK | None |
+| V1.2-3 | Flag unusual and duplicate charges | AFK | None |
+| V1.2-4 | Verify spending insights in everyday use | HITL | V1.2-1, V1.2-2, V1.2-3 |
+| V1.3-1 | Set up the iPhone capture automations and sample their emails | HITL | None |
+| V1.3-2 | Log card captures without counting a payment twice | AFK | V1.3-1, V1.2-3 |
+| V1.3-3 | Choose and build TNG eWallet spending | HITL | V1.3-1 |
+| V1.3-4 | Verify spending without emails in everyday use | HITL | V1.3-2, V1.3-3 |
 
 # Milestone Version 0 Prove the Idea
 
@@ -496,6 +504,195 @@ Version 1.1 is complete when V1.1-1 to V1.1-6 meet their acceptance criteria, or
 Version 1.1 was first completed on 2026-10-18, when V1.1-1 and V1.1-2 met their acceptance criteria. It was reopened the same day for V1.1-3, after the MVP added correcting from the spending list, and on 2026-10-21 gained V1.1-4, after the MVP changed the scheduled sync to run every hour, V1.1-5, after a prompt-injection test, and V1.1-6, after the MVP removed the review date default and added removing an expense from the spending list.
 
 Version 1.1 was completed again on 2026-10-25, when V1.1-3 to V1.1-6 were closed. V1.1-4 and V1.1-5 were checked against the hourly log and the installed copy. For V1.1-3 and V1.1-6 the user chose to rely on the scripted checks and find any remaining problems in everyday use, without a real correction or removal.
+
+# Milestone Version 1.2 Spending Insights
+
+## Version 1.2 outcome
+
+Point out what needs attention in the ledger, as the MVP's [spending insights](MVP.md#spending-insights) describe: subscriptions and their price changes, and charges that look duplicated or unusual. Both are application code over the ledger; the analyser, its prompt, and its evaluation are unchanged.
+
+V1.2-1, V1.2-2, and V1.2-3 can run at the same time. A backfill from V1.2-1 makes the other two useful sooner, but they are built and tested on fictional ledgers without it.
+
+## Issue V1.2-1 Size a ledger backfill and decide its start
+
+**Type:** HITL
+
+**Status:** `planned`
+
+**Blocked by:** None
+
+### What to build
+
+Count the inbox messages that would be analysed if the sync start moved from 2026-10-16 to an earlier date, such as 2026-04-14, with the skip filter applied and using ID-only searches. Estimate the model time and the number of batches, and let the user decide whether to backfill and from when. If the user backfills, update the MVP's [Gmail retrieval](MVP.md#gmail-retrieval) start and the contract first, then run the backfill in batches outside the scheduled hours.
+
+### Acceptance criteria
+
+- [ ] The count, by month, and the estimated run time are recorded privately, with counts only.
+- [ ] The user records a start date, or no backfill, with reasons.
+- [ ] After a backfill, every eligible message since the new start is processed, and the review items it creates are listed for the user.
+- [ ] The scheduled sync's batch and notifications are unchanged during and after the backfill.
+- [ ] No message content, IDs, or private files enter the repository.
+
+## Issue V1.2-2 List subscriptions and their price changes
+
+**Type:** AFK
+
+**Status:** `needs-triage`
+
+**Blocked by:** None
+
+### What to build
+
+Add the subscriptions command and its `status` line, as the MVP's [subscriptions](MVP.md#subscriptions) describe, worked out from the active transactions each time. Triage settles the interval and amount rules, how merchant names are matched, and whether a receipt's renewal wording can mark a subscription after one charge, which would need the analyser and is otherwise left out. Define the rules in the contract beside the [spending summaries](inbox-expense-contract.md#10-spending-summaries).
+
+### Acceptance criteria
+
+- [ ] Triage records the user's choices in the MVP and the contract.
+- [ ] A merchant charged at a regular monthly or yearly interval is listed with its latest amount, interval, latest charge date, and expected next charge, with a monthly total for each currency.
+- [ ] A price change and a subscription first charged this month are pointed out, and `status` shows one line when either exists.
+- [ ] A one-off purchase, or two charges at an irregular interval, is not listed.
+- [ ] A corrected or removed expense changes the list at once, and nothing new is stored.
+- [ ] Tests use fictional ledgers only.
+
+## Issue V1.2-3 Flag unusual and duplicate charges
+
+**Type:** AFK
+
+**Status:** `needs-triage`
+
+**Blocked by:** None
+
+### What to build
+
+Flag possible duplicates and unusual amounts when an expense is logged, show them in the scheduled sync's notification and `status`, and let the user keep or remove each, as the MVP's [unusual and duplicate charges](MVP.md#unusual-and-duplicate-charges) describe. Triage settles the thresholds, where flags are resolved, and whether expenses logged before the feature are flagged. Define the rules, the stored flag and its clearing, and the notification wording in the contract's [processing](inbox-expense-contract.md#6-processing-failure-and-idempotency), [persistence](inbox-expense-contract.md#7-persistence-contract), [scheduled run](inbox-expense-contract.md#9-scheduled-run), and [spending summaries](inbox-expense-contract.md#10-spending-summaries) sections.
+
+### Acceptance criteria
+
+- [ ] Triage records the user's choices in the MVP and the contract.
+- [ ] An expense with the same merchant, amount, and currency as another on the same day is flagged as a possible duplicate, and an amount far above the merchant's usual one is flagged as unusual.
+- [ ] A flagged expense is logged and counted as usual. A flag never changes or removes it.
+- [ ] A scheduled sync that flagged an expense says so in its notification. One that flagged nothing notifies as before.
+- [ ] `status` shows how many flags wait. Keeping an expense clears its flag for good, and removing it works as removal from the spending list.
+- [ ] Re-evaluating or correcting an expense rechecks its flag.
+- [ ] The job step, its notification, and its records are unchanged.
+- [ ] Tests use fictional ledgers and a fake system only.
+
+## Issue V1.2-4 Verify spending insights in everyday use
+
+**Type:** HITL
+
+**Status:** `planned`
+
+**Blocked by:** V1.2-1, V1.2-2, V1.2-3
+
+### What to build
+
+Reinstall the command and use the insights on the real ledger. Finish with a `proceed`, `revise`, or `stop` decision.
+
+### Acceptance criteria
+
+- [ ] The subscriptions list matches the user's own knowledge of their subscriptions, apart from those paid through sources that send no email.
+- [ ] Each flag on the real ledger is kept or removed by the user, and the user judges whether the thresholds flag too much or too little.
+- [ ] No message contents, ledger rows, or database files enter version control.
+- [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
+
+## Version 1.2 completion gate
+
+Version 1.2 is complete when all four issues meet their acceptance criteria and the user records `proceed`.
+
+# Milestone Version 1.3 Spending Without Emails
+
+## Version 1.3 outcome
+
+Log the spending that sends no email, as the MVP's [spending without emails](MVP.md#spending-without-emails) describes: UOB One card SMS alerts and Apple Pay taps become emails the user sends themselves, and TNG eWallet spending is logged by the route the user chooses. Gmail stays the only source.
+
+V1.3-1 can start at once, alongside Version 1.2. V1.3-2 also waits for V1.2-3, because a capture and a merchant's receipt for the same payment are paired by the same rules that flag a possible duplicate.
+
+## Issue V1.3-1 Set up the iPhone capture automations and sample their emails
+
+**Type:** HITL
+
+**Status:** `planned`
+
+**Blocked by:** None
+
+### What to build
+
+With the user, set up an iPhone Shortcuts Message automation that forwards each UOB One transaction SMS to the user's Gmail, and a Wallet transaction automation that emails each Apple Pay tap's merchant, amount, and card to the user's Gmail. Confirm what current iOS allows to run without a tap. Record the structure of the emails they produce, and of one TNG transaction-history email, in the contract's sampled layouts as field names and layout only.
+
+### Acceptance criteria
+
+- [ ] Each automation runs on a real payment without a confirmation tap, or the route is recorded as not silent and the user decides whether to keep it.
+- [ ] Each capture email reaches the Gmail inbox and is recorded with its sender, subject pattern, labels, Gmail category, and body layout, with no real content.
+- [ ] The Wallet capture's fixed format is defined, and carries no full card number, one-time password, or balance.
+- [ ] The TNG history email's structure is recorded: sender, MIME layout, and the statement's columns.
+- [ ] The notes say whether the skip filter would hide any capture email.
+
+## Issue V1.3-2 Log card captures without counting a payment twice
+
+**Type:** AFK
+
+**Status:** `needs-triage`
+
+**Blocked by:** V1.3-1, V1.2-3
+
+### What to build
+
+Log UOB SMS captures and Apple Pay captures as expenses, as the MVP's [spending without emails](MVP.md#spending-without-emails) describes. Triage settles whether captures go through the analyser or a fixed-format rule, how the skip filter treats them, and how a capture and a merchant's receipt for the same payment are paired: sent to review, flagged as a possible duplicate, or one source preferred. Define capture recognition, parsing, and pairing in the contract.
+
+### Acceptance criteria
+
+- [ ] Triage records the user's choices in the MVP and the contract.
+- [ ] A UOB SMS capture and an Apple Pay capture each log one expense with the merchant, amount, currency, and date.
+- [ ] A capture and a merchant's receipt for the same payment never both count silently.
+- [ ] A capture that cannot be read goes to review.
+- [ ] Other inbox emails are decided as before, and the skip filter is unchanged for them.
+- [ ] Tests use fictional capture emails only.
+
+## Issue V1.3-3 Choose and build TNG eWallet spending
+
+**Type:** HITL
+
+**Status:** `needs-triage`
+
+**Blocked by:** V1.3-1
+
+### What to build
+
+Triage chooses between importing the TNG transaction-history statement and counting each TNG reload as spending, as the MVP's [spending without emails](MVP.md#spending-without-emails) describes. A reload paid by the UOB One card already arrives through V1.3-2.
+
+- **Statement import** reads a PDF attachment and logs several expenses from one email. This changes the shared Gmail adapter, which the job tracker also uses, and the one-message-one-decision rule of the contract. Flag both, note the impact on the job tracker, and update the MVP's out-of-scope list before building.
+- **Reload as spending** needs no adapter change, and loses each payment's merchant.
+
+### Acceptance criteria
+
+- [ ] The user records the choice, with reasons, in the MVP, and the contract defines its behavior.
+- [ ] TNG spending appears in the ledger by the chosen route, with no payment counted twice against a UOB reload.
+- [ ] With statement import, the job tracker's retrieval and envelope are unchanged, and its tests pass unchanged.
+- [ ] Tests use fictional statements or emails only.
+
+## Issue V1.3-4 Verify spending without emails in everyday use
+
+**Type:** HITL
+
+**Status:** `planned`
+
+**Blocked by:** V1.3-2, V1.3-3
+
+### What to build
+
+Use the capture routes for a week of real payments. Finish with a `proceed`, `revise`, or `stop` decision.
+
+### Acceptance criteria
+
+- [ ] Card taps, UOB card payments, and TNG spending from the week appear in the ledger once each, checked against the user's own records.
+- [ ] Payments that also sent a receipt email are counted once.
+- [ ] No message contents, SMS text, ledger rows, or database files enter version control.
+- [ ] The user records a `proceed`, `revise`, or `stop` decision with reasons.
+
+## Version 1.3 completion gate
+
+Version 1.3 is complete when all four issues meet their acceptance criteria and the user records `proceed`.
 
 ## Scope changes
 

@@ -140,13 +140,52 @@ The user asked on 2026-10-18, after Version 1, for a quick way to see what they 
 - Commands use the live database and ledger unless told otherwise, so everyday use needs no file paths.
 - When changes have been merged to `main` since the installed copy was built, the summary says so and shows the commands to update it. The user asked for this on 2026-10-21, so updating does not depend on remembering it after each merge. Nothing updates itself.
 - A summary covers what the latest sync has logged; mail that arrived since is not included until the next sync.
-- Once the [job tracker](../jobs/MVP.md) has a database, the summary also shows how many job applications it tracks and how many of its emails wait for review, with its commands, so one command shows both apps. With the job tracker's [scheduled sync](../jobs/MVP.md#skim-list), it also shows how many job-related emails there are to skim this week. This is the first surface the two projects share, chosen by the user on 2026-10-22 as a step toward combining them. Reading the counts never changes the job tracker or waits for its sync, and without a job database the summary is unchanged.
+- Once the [job tracker](../jobs/MVP.md) has a database, the summary also shows how many job applications it tracks and how many of its emails wait for review, with its commands, so one command shows both apps. With the job tracker's [scheduled sync](../jobs/MVP.md#skim-list), it also shows how many job-related emails there are to skim this week, and with its [interview reminders](../jobs/MVP.md#interview-reminders), the next interview. This is the first surface the two projects share, chosen by the user on 2026-10-22 as a step toward combining them. Reading the counts never changes the job tracker or waits for its sync, and without a job database the summary is unchanged.
 
-## External payment applications
+## Spending insights
+
+The user asked on 2026-10-25 for the ledger to point out what needs attention, not only totals: subscriptions that were forgotten or became more expensive, and charges that look wrong. Both are worked out from the ledger in application code; the analyser is unchanged.
+
+### Subscriptions
+
+- A subscriptions command lists the merchants charged repeatedly at a regular interval, such as monthly or yearly, with each one's latest amount, interval, latest charge date, and expected next charge, and a monthly total for each currency.
+- It points out a subscription whose latest charge differs from the one before, such as a price rise or a free trial that turned paid, and a subscription first charged this month.
+- The spending summary adds one line when a subscription changed price or started this month.
+- The list is worked out from the ledger each time, so nothing new is stored, and a corrected or removed expense changes it at once.
+- A subscription is recognized from its charges, so it appears after its second charge. One paid through a card or wallet that sends no email appears once [spending without emails](#spending-without-emails) logs it.
+- Settled in the roadmap's triage: how regular the interval and how close the merchant names must be, and whether a receipt's own wording, such as a renewal date, can mark a subscription after one charge.
+
+### Unusual and duplicate charges
+
+- A logged expense is flagged as a possible duplicate when another expense has the same merchant, amount, and currency on the same day, and as unusual when its amount is far above what that merchant usually charges.
+- A flag never changes or removes an expense. The expense is logged and counted as usual.
+- After a scheduled sync that flagged an expense, the sync's notification says so, as it does for review items.
+- The spending summary shows how many flagged expenses wait. For each, the user keeps it, which clears the flag, or marks it as not an expense, as in the spending list. A cleared flag does not return.
+- The ledger records the transaction date, not its time, so a charge made twice within minutes is detected as twice on the same day.
+- Settled in the roadmap's triage: how many earlier charges a merchant needs before an amount can be unusual, and how far above its usual amount; whether flags are resolved in `mizu-kakeibo review` or a list of their own; and whether expenses logged before the feature are flagged.
+
+### History
+
+Both insights need months of charges, and the ledger starts at 2026-10-16. The user may move the sync start earlier and backfill the ledger, after its size and run time are measured; without a backfill, both fill in over the coming months.
+
+## Spending without emails
 
 No payment-application integration is required when the application sends receipts or transaction notifications into Gmail. Those messages enter the inbox-wide workflow even when the sender is unknown and no Gmail filter exists.
 
-Applications that send no email are outside the MVP and may require direct integrations later.
+Much of the user's spending sends no email: card alerts arrive by SMS or app push, and TNG eWallet sends no per-payment email. The user chose on 2026-10-25, after research on 2026-10-21, to turn those payments into emails the user sends themselves, so Gmail stays the only source and the existing workflow logs them:
+
+- **UOB One credit card.** It sends an SMS for each transaction. An iPhone automation forwards each UOB transaction SMS to the user's Gmail.
+- **Apple Pay taps.** The MAE Visa debit card works with Apple Pay. An iPhone Wallet automation emails each tap's merchant and amount to the user's Gmail. It covers taps in shops, not online card payments.
+- **TNG eWallet.** Its app can email a transaction history with a PDF statement. Logging from it means reading an attachment and logging several expenses from one email, which the MVP excludes today. A TNG reload paid by the UOB One card already arrives as a UOB SMS. The roadmap's triage chooses between importing the statement and counting each reload as spending.
+
+These rules apply to every capture route:
+
+- A capture automation runs without a tap for each payment. A route that iOS will not run silently is reconsidered rather than relied on.
+- A capture email carries only what the expense needs: the merchant, amount, currency, date, and which card or wallet. Never a full card number, a one-time password, or a balance.
+- A payment is counted once even when a capture and the merchant's own receipt both report it. A likely pair goes to review or is flagged as a [possible duplicate](#unusual-and-duplicate-charges), never logged twice silently.
+- Settled in the roadmap's triage: whether captures go through the analyser or a fixed-format rule, how the skip filter treats them, and how a capture and a receipt are paired.
+
+Direct bank or payment-application connections, such as Bank Negara Malaysia's open finance, stay out of scope.
 
 ## Deferred improvements
 
@@ -164,10 +203,10 @@ The MVP does not require:
 - A model-based metadata relevance gate. The skip filter is a fixed rule, not a model.
 - Gmail labels or filters for financial senders.
 - A complete definition of every financial event type before validation.
-- Attachment retrieval or analysis.
+- Attachment retrieval or analysis, unless the TNG choice under [spending without emails](#spending-without-emails) adopts the statement import.
 - Direct bank or payment-application connections.
-- A dedicated forwarding address or inbound email provider.
-- Categories, budgets, charts, or a visual dashboard. Spending is shown only as the terminal [spending summaries](#spending-summaries).
+- A dedicated forwarding address or inbound email provider. Capture emails are sent to the user's own Gmail.
+- Categories, budgets, charts, or a visual dashboard. Spending is shown only as the terminal [spending summaries](#spending-summaries) and [spending insights](#spending-insights).
 - Converting foreign-currency expenses to ringgit.
 - Gmail push notifications instead of scheduled polling.
 - Hosted deployment or PostgreSQL storage.
