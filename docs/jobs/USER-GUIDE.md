@@ -75,19 +75,42 @@ Once the first sync has run, `mizu-kakeibo` on its own adds a `Jobs` line under 
 
 The `to skim` count appears only when this week has emails to [skim](#skimming-for-a-missed-update).
 
-To see the applications, run `mizu-kakeibo jobs-list`. The most recently updated come first:
+To see the applications, run `mizu-kakeibo jobs-list`. They are listed by how far each got: offered, interview, viewed, applied, then rejected last, and within each status the most recently updated first:
 
 ```text
-2 applications
+3 applications
 
-      Updated     Status     Company         Job title
-  #2  2026-10-12  interview  Orchid Harbour  Product Designer
-  #1  2026-10-09  applied    Lumen Works     Backend Engineer
+     Updated     Status     Company         Job title
+  1  2026-10-12  interview  Orchid Harbour  Product Designer
+  2  2026-10-09  applied    Lumen Works     Backend Engineer
+  3  2026-10-14  rejected   Kestrel Labs    Data Analyst
 
 1 message to review: run mizu-kakeibo jobs-review
 ```
 
 The company and job title are shown as first written. A status only moves forward, from applied to viewed to interview to offered or rejected, so a late or repeated email does not move an application back. Applying again after a rejection reopens it as applied.
+
+The numbers follow the order, so an application's number can change when another is added or a status changes. Run `jobs-list` again before `jobs-show` if a sync may have run since.
+
+## Looking at one application
+
+Before a call or an interview, run `mizu-kakeibo jobs-show` with the application's number from `jobs-list`, such as `mizu-kakeibo jobs-show 1`. It shows the application, the other names it was confirmed under in review, and every email linked to it, oldest first, with the status each reported and what it did to the application:
+
+```text
+  Company    Orchid Harbour
+  Job title  Product Designer
+  Status     interview, updated 2026-10-12
+  Aliases    Orchid Harbour Group · Product Designer
+
+  1  Fri  9 Oct  Example Careers  applied    created              Orchid Harbour received your application
+  2  Mon 12 Oct  Example Hiring   interview  advanced (reviewed)  Interview for Product Designer
+
+  2 emails
+
+Number to open in Gmail, or Enter or q to quit:
+```
+
+An email either `created` the application, `advanced` it to a further status, `reopened` it after a rejection, or left it `unchanged`; `(reviewed)` marks an email you attached in review. Type a number to open that email in Gmail, as often as you like, and press Enter to finish. Nothing is recorded, and it works while a sync is running.
 
 ## Skimming for a missed update
 
@@ -151,7 +174,8 @@ When you attach an email whose company or job title is written differently, such
 | --- | --- |
 | The Gmail sign-in has expired or was removed | Run `mizu-kakeibo gmail-sign-in --replace` and approve read-only access in the browser. The sign-in is shared, so this fixes the expense sync too. |
 | An error about Ollama | Check that Ollama is running, as for the expense app; see the [README](../../README.md#setup) |
-| `no job-tracker database` from `jobs-list`, `jobs-review`, or `jobs-skim` | Run `mizu-kakeibo jobs-sync` first; the first sync creates it |
+| `no job-tracker database` from `jobs-list`, `jobs-show`, `jobs-review`, or `jobs-skim` | Run `mizu-kakeibo jobs-sync` first; the first sync creates it |
+| `no application 7` from `jobs-show` | Run `mizu-kakeibo jobs-list` and use a number it shows; the numbers can change after a sync |
 | A `Job sync stopped` notification | Usually nothing; it tries again next hour. If it repeats, run `mizu-kakeibo jobs-sync` to see the error, or look at `~/mizu-kakeibo-private/live/launchd.err.log` after an unexpected error. |
 | `Jobs  could not read the job database` in the summary | Run `mizu-kakeibo` again. If it stays, ask Claude Code in this repository to investigate. |
 

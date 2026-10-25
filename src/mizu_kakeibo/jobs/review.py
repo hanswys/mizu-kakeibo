@@ -10,6 +10,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from email.utils import parseaddr
+from pathlib import Path
 from typing import TypeVar
 
 from ..models import InboxMessage
@@ -26,6 +27,8 @@ from .storage import (
     LikelyMatchError,
     ResolutionAction,
     ReviewItemResolvedError,
+    read_applications,
+    read_counts,
 )
 from .tracker import ReviewCause
 
@@ -145,12 +148,19 @@ def render_item(entry: _Entry) -> str:
     return "\n".join(lines)
 
 
-def render_applications(applications: Sequence[ApplicationRow], columns: int) -> str:
-    """One line per application: ID, latest update date, status, company, and job title."""
+def render_applications(
+    applications: Sequence[ApplicationRow], columns: int, numbered: bool = False
+) -> str:
+    """One line per application: ID, latest update date, status, company, and job title;
+    `numbered` puts the list's numbers, which `jobs-show` takes, in place of the IDs.
+    """
     if not applications:
         return "No applications yet."
     count = len(applications)
-    numbers = [f"#{application.id}" for application in applications]
+    if numbered:
+        numbers = [str(number) for number in range(1, count + 1)]
+    else:
+        numbers = [f"#{application.id}" for application in applications]
     number_width = max(len(number) for number in numbers)
     companies = [
         _shorten(_line(application.company), COMPANY_WIDTH) for application in applications
@@ -166,17 +176,21 @@ def render_applications(applications: Sequence[ApplicationRow], columns: int) ->
     ]
     for application, number, company in zip(applications, numbers, companies):
         lines.append(
-            f"  {number:<{number_width}}  {application.latest_update.isoformat()}  "
+            f"  {number:{'>' if numbered else '<'}{number_width}}  "
+            f"{application.latest_update.isoformat()}  "
             f"{application.status.value:<9}  {company:<{company_width}}  "
             f"{_shorten(_line(application.job_title), title_width)}"
         )
     return "\n".join(lines)
 
 
-def application_list(store: JobStore, columns: int) -> str:
-    """The `jobs-list` output: the applications, then what waits for review."""
-    text = render_applications(store.list_applications(), columns)
-    waiting = len(store.list_review_items())
+def application_list(database_path: Path, columns: int) -> str:
+    """The `jobs-list` output: the numbered applications, then what waits for review.
+
+    It reads the database read-only and without the run lock, so it writes nothing.
+    """
+    text = render_applications(read_applications(database_path), columns, numbered=True)
+    waiting = read_counts(database_path)[1]
     if waiting:
         text += (
             f"\n\n{waiting} message{'' if waiting == 1 else 's'} to review: "

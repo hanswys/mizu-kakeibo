@@ -193,15 +193,15 @@ def test_statuses_may_be_typed_by_their_first_letters() -> None:
         parse_status("")
 
 
-def test_the_application_list_shows_newest_updates_first(store) -> None:
-    text = application_list(store, 100)
+def test_the_application_list_numbers_the_applications(store) -> None:
+    text = application_list(store.database_path, 100)
 
     assert text.splitlines()[:5] == [
         "2 applications",
         "",
-        "      Updated     Status     Company         Job title",
-        "  #2  2026-05-02  applied    Lumen Works     Backend Engineer",
-        "  #1  2026-05-01  applied    Orchid Harbour  Product Designer",
+        "     Updated     Status     Company         Job title",
+        "  1  2026-05-02  applied    Lumen Works     Backend Engineer",
+        "  2  2026-05-01  applied    Orchid Harbour  Product Designer",
     ]
     assert text.endswith("2 messages to review: run mizu-kakeibo jobs-review\n")
 
@@ -284,10 +284,12 @@ def test_the_expense_lock_does_not_block_a_job_run(tmp_path, monkeypatch, capsys
     assert json.loads(capsys.readouterr().out)["summary"]["status_update"] == ["a2"]
 
 
-@pytest.mark.parametrize("command", ["jobs-list", "jobs-review", "jobs-skim"])
+@pytest.mark.parametrize(
+    "command", [["jobs-list"], ["jobs-review"], ["jobs-skim"], ["jobs-show", "1"]]
+)
 def test_reading_commands_need_an_existing_database(command, capsys) -> None:
     with pytest.raises(SystemExit) as exit:
-        cli.main([command])
+        cli.main(command)
     assert exit.value.code == 2
     assert "no job-tracker database" in capsys.readouterr().err
-    assert not cli.JOBS_LIVE_DATABASE.exists()
+    assert not cli.JOBS_LIVE_DATABASE.parent.exists()

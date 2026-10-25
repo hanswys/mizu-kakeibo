@@ -379,7 +379,7 @@ J1.1-1 depends on nothing and can start at once. The interview work starts after
 
 **Type:** AFK
 
-**Status:** `planned`
+**Status:** `complete` (2026-10-25. Built and tested with fictional fixtures. `jobs-list` now reads the database read-only, as `jobs-show` does, so neither can create or migrate one; the review's attach list follows the same order, still labelled by application ID. Then run against the live job database: `jobs-list`, `jobs-show 1`, and an unknown number, which exited 1, left the database, `-wal`, and `-shm` unchanged. The `status` command list gains a `jobs-show 1` line whenever the job database exists. Everyday use is checked in J1.1-5.)
 
 **Blocked by:** None
 
@@ -389,14 +389,14 @@ Order `jobs-list` by status, as the MVP's [application list](MVP.md#application-
 
 ### Acceptance criteria
 
-- [ ] `jobs-list` lists `offered`, `interview`, `viewed`, and `applied` applications in that order, then `rejected` ones, each status most recently updated first and then by ID.
-- [ ] `jobs-list` numbers its applications in that order, and `jobs-show` takes the same numbers. A number can change when an application is added or changes status.
-- [ ] `jobs-show N` shows the company, job title, current status, and confirmed aliases, then every linked email oldest first with its received date, sender, subject, reported status, and effect.
-- [ ] In a terminal, a listed email opens in Gmail by its number, and Enter quits.
-- [ ] An unknown number prints an error and exits with status 1.
-- [ ] Showing an application changes no file, and reads the database without the run lock.
-- [ ] The job [user guide](USER-GUIDE.md) and the command list under `status` include `jobs-show`.
-- [ ] Tests use fictional fixtures only.
+- [x] `jobs-list` lists `offered`, `interview`, `viewed`, and `applied` applications in that order, then `rejected` ones, each status most recently updated first and then by ID.
+- [x] `jobs-list` numbers its applications in that order, and `jobs-show` takes the same numbers. A number can change when an application is added or changes status.
+- [x] `jobs-show N` shows the company, job title, current status, and confirmed aliases, then every linked email oldest first with its received date, sender, subject, reported status, and effect.
+- [x] In a terminal, a listed email opens in Gmail by its number, and Enter quits.
+- [x] An unknown number prints an error and exits with status 1.
+- [x] Showing an application changes no file, and reads the database without the run lock.
+- [x] The job [user guide](USER-GUIDE.md) and the command list under `status` include `jobs-show`.
+- [x] Tests use fictional fixtures only.
 
 ## Issue J1.1-2 Read and evaluate interview times
 
