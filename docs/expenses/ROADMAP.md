@@ -537,7 +537,7 @@ Count the inbox messages that would be analysed if the sync start moved from 202
 
 **Type:** AFK
 
-**Status:** `needs-triage`
+**Status:** `complete` (built on 2026-10-25; [V1.2-4](#issue-v12-4-verify-spending-insights-in-everyday-use) checks it on real charges)
 
 **Blocked by:** None
 
@@ -547,12 +547,16 @@ Add the subscriptions command and its `status` line, as the MVP's [subscriptions
 
 ### Acceptance criteria
 
-- [ ] Triage records the user's choices in the MVP and the contract.
-- [ ] A merchant charged at a regular monthly or yearly interval is listed with its latest amount, interval, latest charge date, and expected next charge, with a monthly total for each currency.
-- [ ] A price change and a subscription first charged this month are pointed out, and `status` shows one line when either exists.
-- [ ] A one-off purchase, or two charges at an irregular interval, is not listed.
-- [ ] A corrected or removed expense changes the list at once, and nothing new is stored.
-- [ ] Tests use fictional ledgers only.
+- [x] Triage records the user's choices in the MVP and the contract.
+- [x] A merchant charged at a regular monthly or yearly interval is listed with its latest amount, interval, latest charge date, and expected next charge, with a monthly total for each currency.
+- [x] A price change and a subscription started this month are pointed out, and `status` shows one line when either exists.
+- [x] A one-off purchase, or two charges at an irregular interval, is not listed.
+- [x] A corrected or removed expense changes the list at once, and nothing new is stored.
+- [x] Tests use fictional ledgers only.
+
+### Triage and build, 2026-10-25
+
+The user took every recommendation; the rules are in the MVP's [subscriptions](MVP.md#subscriptions) and the contract's [`subscriptions`](inbox-expense-contract.md#10-spending-summaries). One reading was settled during the build: "new this month" means the second charge is this month, because a subscription first charged this month would almost never have its second charge yet. `mizu-kakeibo subscriptions` and the `status` row ran against the live database with its hash unchanged. With the ledger starting 2026-10-16 the list is empty or nearly so; [V1.2-4](#issue-v12-4-verify-spending-insights-in-everyday-use) checks it on real charges. Every series charged since 2026-10-16 will show as `new this month` in its first November, unless [V1.2-1](#issue-v12-1-size-a-ledger-backfill-and-decide-its-start) backfills the ledger first.
 
 ## Issue V1.2-3 Flag unusual and duplicate charges
 

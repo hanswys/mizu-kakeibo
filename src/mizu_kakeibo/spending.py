@@ -18,6 +18,7 @@ _EVERYDAY_COMMANDS = (
     ("mizu-kakeibo", "this summary"),
     ("mizu-kakeibo spend month", "this month's expenses, numbered to correct one"),
     ("mizu-kakeibo spend month --by merchant", "this month's total for each merchant"),
+    ("mizu-kakeibo subscriptions", "monthly and yearly charges, and their price changes"),
     ("mizu-kakeibo review", "resolve what needs review, one at a time"),
     ("mizu-kakeibo sync", "read new inbox messages now"),
     ("mizu-kakeibo gmail-sign-in", "sign in to Gmail again, read-only"),
@@ -230,10 +231,12 @@ def render_status(
     sync: str | None,
     update: Sequence[str] | None = None,
     jobs: str | None = None,
+    subscriptions: str | None = None,
 ) -> str:
-    """Summarize today, this week, and this month from the month's and week's entries.
+    """Summarize today, this week, and this month from the entries, which may reach further back.
 
     `jobs` is the job tracker's row, given only when it has a database; its commands follow.
+    `subscriptions` is the subscriptions row, given only when it has something to point out.
     """
     week = parse_period("week", today)
     month = parse_period("month", today)
@@ -251,8 +254,11 @@ def render_status(
     ]
     if jobs is not None:
         rows.append(("Jobs", jobs))
+    if subscriptions is not None:
+        rows.append(("Subscriptions", subscriptions))
+    label = max(11, *(len(name) + 1 for name, _ in rows))
     lines = [f"Mizu Kakeibo · {_day(today)}", ""]
-    lines.extend(f"  {name:<11} {value}" for name, value in rows)
+    lines.extend(f"  {name:<{label}} {value}" for name, value in rows)
     if update:
         lines.extend(["", "  A newer version is on main. To update, run:"])
         lines.extend(f"    {command}" for command in update)
