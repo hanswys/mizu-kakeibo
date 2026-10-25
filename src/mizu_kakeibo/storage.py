@@ -6,7 +6,7 @@ import json
 import os
 import sqlite3
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -51,6 +51,22 @@ class LedgerEntry:
     amount_minor: int
     currency: str
     transaction_date: date
+
+
+@dataclass(frozen=True)
+class FlagCandidate:
+    """A logged expense with what flags may check on it and which the user kept."""
+
+    entry: LedgerEntry
+    analysis_id: int
+    logged_at: str
+    checks: frozenset[str]
+    kept: frozenset[str]
+
+    @property
+    def logged(self) -> tuple[str, int]:
+        """Order expenses by when they were logged: analysed as an expense, or resolved as one."""
+        return self.logged_at, self.analysis_id
 
 
 @dataclass(frozen=True)
@@ -144,6 +160,20 @@ CREATE TABLE IF NOT EXISTS removals (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     analysis_id INTEGER NOT NULL UNIQUE,
     removed_at TEXT NOT NULL,
+    FOREIGN KEY (analysis_id) REFERENCES analyses(id)
+);
+
+CREATE TABLE IF NOT EXISTS flag_checks (
+    analysis_id INTEGER PRIMARY KEY,
+    unusual INTEGER NOT NULL CHECK (unusual IN (0, 1)),
+    FOREIGN KEY (analysis_id) REFERENCES analyses(id)
+);
+
+CREATE TABLE IF NOT EXISTS flag_keeps (
+    analysis_id INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('duplicate', 'unusual')),
+    kept_at TEXT NOT NULL,
+    PRIMARY KEY (analysis_id, kind),
     FOREIGN KEY (analysis_id) REFERENCES analyses(id)
 );
 
@@ -245,7 +275,13 @@ class Store:
         metadata: RuntimeMetadata,
         *,
         reevaluate: bool = False,
+        check_unusual: bool = True,
     ) -> int:
+        """Save an analysis, replacing the active one only when `reevaluate` is set.
+
+        Its expense, now or once resolved from review, is checked for a possible duplicate,
+        and for an unusual amount unless `check_unusual` is off, as for a backfill.
+        """
         provider = envelope.source.provider
         message_id = envelope.source.message_id
         transaction = output.transaction
@@ -317,6 +353,10 @@ class Store:
                 ),
             )
             analysis_id = int(cursor.lastrowid)
+            connection.execute(
+                "INSERT INTO flag_checks(analysis_id, unusual) VALUES (?, ?)",
+                (analysis_id, int(check_unusual)),
+            )
             connection.execute(
                 "DELETE FROM transactions WHERE provider = ? AND message_id = ?",
                 (provider, message_id),
@@ -406,6 +446,58 @@ class Store:
             )
             for row in rows
         ]
+
+    def list_flag_candidates(self) -> list[FlagCandidate]:
+        """Return every logged expense in ledger order, with its flag checks and keeps."""
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT t.provider, t.message_id, t.merchant, t.amount_minor, t.currency,
+                       t.transaction_date, t.analysis_id,
+                       COALESCE(r.resolved_at, a.processed_at) AS logged_at,
+                       f.unusual,
+                       (SELECT group_concat(k.kind) FROM flag_keeps k
+                        WHERE k.analysis_id = t.analysis_id) AS kept
+                FROM transactions t
+                JOIN analyses a ON a.id = t.analysis_id
+                LEFT JOIN resolutions r ON r.analysis_id = t.analysis_id
+                LEFT JOIN flag_checks f ON f.analysis_id = t.analysis_id
+                ORDER BY t.transaction_date, t.provider, t.message_id
+                """
+            ).fetchall()
+        candidates = []
+        for row in rows:
+            checks = set()
+            if row["unusual"] is not None:
+                checks.add("duplicate")
+                if row["unusual"]:
+                    checks.add("unusual")
+            candidates.append(
+                FlagCandidate(
+                    entry=LedgerEntry(
+                        provider=row["provider"],
+                        message_id=row["message_id"],
+                        merchant=row["merchant"],
+                        amount_minor=row["amount_minor"],
+                        currency=row["currency"],
+                        transaction_date=date.fromisoformat(row["transaction_date"]),
+                    ),
+                    analysis_id=row["analysis_id"],
+                    logged_at=row["logged_at"],
+                    checks=frozenset(checks),
+                    kept=frozenset(row["kept"].split(",") if row["kept"] else ()),
+                )
+            )
+        return candidates
+
+    def keep_flags(self, analysis_id: int, kinds: Iterable[str]) -> None:
+        """Clear an expense's flags of these kinds for good, keeping the expense as logged."""
+        kept_at = _utc_now()
+        with self.connect() as connection:
+            connection.executemany(
+                "INSERT OR IGNORE INTO flag_keeps(analysis_id, kind, kept_at) VALUES (?, ?, ?)",
+                [(analysis_id, kind, kept_at) for kind in kinds],
+            )
 
     def resolve_review(
         self,

@@ -12,7 +12,7 @@ import time
 import traceback
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -99,6 +99,7 @@ class SyncReport:
 
     output: dict[str, Any]
     runtime_version: str
+    flagged: list[str] = field(default_factory=list)  # the new expenses that were flagged
 
 
 @dataclass(frozen=True)
@@ -313,13 +314,16 @@ def _count(count: int, noun: str) -> str:
     return f"{count} {noun}{'' if count == 1 else 's'}"
 
 
-def notification_text(counts: dict[str, int]) -> tuple[str, str]:
-    """Return a notification's subtitle and text from a run's counts."""
+def notification_text(counts: dict[str, int], flagged: int = 0) -> tuple[str, str]:
+    """Return a notification's subtitle and text from a run's counts and flagged expenses."""
     checked = sum(counts[group] for group in ANALYSED)
+    text = (
+        f"{_count(counts['expense'], 'expense')} · {counts['needs_review']} to review · "
+        f"{counts['failed']} failed"
+    )
     return (
         f"Checked {_count(checked, 'new message')}",
-        f"{_count(counts['expense'], 'expense')} · {counts['needs_review']} to review · "
-        f"{counts['failed']} failed",
+        text + (f" · {flagged} flagged" if flagged else ""),
     )
 
 
@@ -563,7 +567,7 @@ def _report(
 ) -> None:
     counts = record["counts"]
     if record["notification"]:
-        system.notify(*notification_text(counts))
+        system.notify(*notification_text(counts, len(record["flagged"] or ())))
     if record["dialog"] == "review":
         system.show_dialog(review_dialog_text(counts), write_review_script())
     elif record["dialog"] == "failure":
@@ -637,6 +641,7 @@ def _locked_expense_step(
         "groups": groups,
         "counts": counts,
         "message_errors": message_errors,
+        "flagged": None if report is None else report.flagged,
         "notification": notification,
         "dialog": dialog,
     }

@@ -231,10 +231,12 @@ def render_status(
     sync: str | None,
     update: Sequence[str] | None = None,
     jobs: str | None = None,
+    flag_count: int = 0,
 ) -> str:
     """Summarize today, this week, and this month from the month's and week's entries.
 
     `jobs` is the job tracker's row, given only when it has a database; its commands follow.
+    The `Flags` row shows only while flagged expenses wait.
     """
     week = parse_period("week", today)
     month = parse_period("month", today)
@@ -248,8 +250,10 @@ def render_status(
         ("This week", summary_line(within(week))),
         ("This month", summary_line(within(month))),
         ("To review", review),
-        ("Last sync", sync or "none recorded"),
     ]
+    if flag_count:
+        rows.append(("Flags", f"{flag_count} to check"))
+    rows.append(("Last sync", sync or "none recorded"))
     if jobs is not None:
         rows.append(("Jobs", jobs))
     lines = [f"Mizu Kakeibo · {_day(today)}", ""]

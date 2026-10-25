@@ -18,7 +18,7 @@ Everything stays on the laptop, under `~/mizu-kakeibo-private/live/`:
 ## A normal day
 
 1. **Every hour.** At each hour from 08:00 to 23:00 when the laptop is open and awake, the sync reads up to 25 new messages that arrived since the last one. Promotions, social updates, and job alerts are skipped without being read.
-2. **The notification.** If it logged an expense, found something to review, or failed a message, a notification says how many messages it checked and how many were expenses, to review, or failed, for example `1 expense · 2 to review · 0 failed`. macOS shows it as coming from Script Editor, and a Focus mode may hold it in Notification Center. A sync with nothing new, or only messages that are not expenses, stays silent.
+2. **The notification.** If it logged an expense, found something to review, or failed a message, a notification says how many messages it checked and how many were expenses, to review, or failed, for example `1 expense · 2 to review · 0 failed`. macOS shows it as coming from Script Editor, and a Focus mode may hold it in Notification Center. If a new expense looks like a duplicate or an unusual amount, the text ends with how many were [flagged](#checking-a-flagged-expense), such as `2 expenses · 0 to review · 0 failed · 1 flagged`. A sync with nothing new, or only messages that are not expenses, stays silent.
 3. **The dialog.** If anything needs review or failed, a dialog also appears. Click **Review in Terminal** to resolve the messages now, or **Dismiss** to deal with them later. It closes by itself after an hour.
 4. **Through the day.** Mail that arrives after a sync is picked up the next hour, so `mizu-kakeibo` shows today's spending as the day goes on. If a sync failed or left messages for later, the next hour retries or continues them.
 
@@ -39,6 +39,8 @@ Mizu Kakeibo · Sun 18 Oct 2026
   To review   nothing
   Last sync   Sun 18 Oct 01:38 · 1 expense, 0 to review, 0 failed
 ```
+
+When an expense is [flagged](#checking-a-flagged-expense), a `Flags` line after `To review` says how many wait, such as `Flags       2 to check`. Without flags the line is left out.
 
 Once the job tracker has synced, a `Jobs` line follows with its applications, the job emails waiting for review, and any job emails to skim this week, and its commands are listed after the expense ones; see the [job tracker guide](../jobs/USER-GUIDE.md#checking-your-applications).
 
@@ -85,6 +87,33 @@ Type a number to see that message: its sender, subject, received time, why the a
 Nothing is saved until you answer `y` to `Save?`, because a resolved message cannot go back to review. After each message the next one is shown, and after the last the list is shown again. Quitting, `Ctrl-C`, or closing the window saves nothing for the message on screen.
 
 You can also ask Claude Code in this repository, for example "resolve the Shopee review item as an expense of RM35.90 on 18 October".
+
+## Checking a flagged expense
+
+The app flags an expense, without changing it, when it looks wrong:
+
+- **Possible duplicate:** another expense has the same merchant, amount, and currency on the same day. Only the one logged later is flagged.
+- **Unusual:** the merchant has at least three earlier charges in that currency, and this one is more than twice their median.
+
+Flagged expenses are listed in `mizu-kakeibo review`, after the messages to review and numbered on from them:
+
+```text
+1 flagged expense to check
+
+  3  Sun 18 Oct  Grab  MYR 24.90  possible duplicate
+```
+
+Type its number to see the expense, its email, and why it was flagged. Then press a key and Enter:
+
+| Key | Does |
+| --- | --- |
+| `k` | Keeps it. The flag is cleared for good |
+| `n` | It is not an expense: removes it from the ledger and every total, as in `spend` |
+| `g` | Opens its email in Gmail |
+| `s` | Skips it for now |
+| `q` | Quits |
+
+Keeping and removing each ask `Save?` first. Fixing a wrong amount with `spend` also clears a flag, and a correction that makes two expenses match flags the later one. Expenses logged before you installed the version with flags are never flagged, and a backfill with `mizu-kakeibo sync --full` is checked for duplicates only.
 
 ## Fixing a logged expense
 
